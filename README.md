@@ -20,6 +20,10 @@ Import, sort and cull photos from camera cards, then hand the keepers to Lightro
 
 Ratings and picks live in `.xmp` files next to each RAW and in `<project>/.grabit/`, so a project folder can be moved as a whole.
 
+## Install
+
+See **[INSTALL.md](INSTALL.md)** for downloading and installing Safelight on Windows and macOS, first-time setup and troubleshooting.
+
 ## Development
 
 Prerequisites: Node 22+, Rust (stable), and on Windows the MSVC build tools.
