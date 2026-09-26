@@ -1,0 +1,12 @@
+{
+  "bundle": {
+    "resources": {
+      "resources/exiftool/unix/": "resources/exiftool/unix/",
+      "resources/onnxruntime/macos/": "resources/onnxruntime/macos/",
+      "resources/ffmpeg/macos/": "resources/ffmpeg/macos/"
+    },
+    "macOS": {
+      "minimumSystemVersion": "11.0"
+    }
+  }
+}

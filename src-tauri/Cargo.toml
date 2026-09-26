@@ -1,0 +1,61 @@
+[package]
+name = "grabit"
+version = "0.1.0"
+description = "Import, cull and hand off camera cards"
+authors = ["bruchhage"]
+edition = "2021"
+
+[lib]
+# The `_lib` suffix avoids a name clash between the lib and bin targets on Windows
+# (https://github.com/rust-lang/cargo/issues/8519).
+name = "grabit_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+rusqlite = { version = "0.37", features = ["bundled"] }
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+sysinfo = { version = "0.37", default-features = false, features = ["disk"] }
+walkdir = "2"
+chrono = { version = "0.4", features = ["serde"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "pnm", "tiff"] }
+parking_lot = "0.12"
+filetime = "0.2"
+dirs = "6"
+rayon = "1"
+crossbeam-channel = "0.5"
+trash = "5"
+# ONNX Runtime is loaded from the bundled shared library (resources/onnxruntime),
+# which avoids MSVC STL mismatches with static builds.
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "load-dynamic", "api-27"] }
+ureq = "3"
+sha2 = "0.10"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.dev.package."*"]
+# Image decoding and hashing are painfully slow unoptimised, even in dev builds.
+opt-level = 3
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+# Unwind rather than abort: one bad file then fails one job instead of closing the app.
+panic = "unwind"
+strip = true

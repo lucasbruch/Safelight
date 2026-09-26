@@ -1,0 +1,10 @@
+{
+  "bundle": {
+    "resources": {
+      "resources/exiftool/windows/": "resources/exiftool/windows/",
+      "resources/libraw/windows/": "resources/libraw/windows/",
+      "resources/onnxruntime/windows/": "resources/onnxruntime/windows/",
+      "resources/ffmpeg/windows/": "resources/ffmpeg/windows/"
+    }
+  }
+}

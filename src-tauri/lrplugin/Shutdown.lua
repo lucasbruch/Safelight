@@ -1,0 +1,1 @@
+require("State").stop = true

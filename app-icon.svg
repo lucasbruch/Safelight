@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Safelight: the current frame's crop marks around a lit pick lamp, on graphite. -->
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="#17181b"/>
+  <rect x="68" y="68" width="888" height="888" rx="196" fill="none" stroke="#34363c" stroke-width="8"/>
+  <rect x="164" y="164" width="696" height="696" rx="112" fill="#0b0b0c"/>
+  <g fill="none" stroke="#eef1f5" stroke-width="40" stroke-linecap="square">
+    <path d="M314 424V314h110"/>
+    <path d="M600 314h110v110"/>
+    <path d="M710 600v110H600"/>
+    <path d="M424 710H314V600"/>
+  </g>
+  <circle cx="512" cy="512" r="104" fill="#1c3a2b"/>
+  <circle cx="512" cy="512" r="84" fill="#3fd18a"/>
+</svg>

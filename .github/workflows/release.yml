@@ -1,0 +1,56 @@
+# Builds the Windows (.msi/.exe) and macOS (universal .dmg) installers and
+# attaches them to a draft GitHub release. Run it by pushing a tag like v0.2.0,
+# or by hand from the Actions tab.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            args: ""
+          - os: macos-latest
+            args: "--target universal-apple-darwin"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.os == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # Bundled helpers aren't in git (they're large binaries). The script pins each
+      # version and checks its SHA-256, the same as for local development.
+      - name: Fetch helpers
+        shell: bash
+        run: bash scripts/fetch-helpers.sh
+
+      - run: npm ci
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || format('v__VERSION__-{0}', github.run_number) }}
+          releaseName: "Safelight v__VERSION__"
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

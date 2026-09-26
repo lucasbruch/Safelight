@@ -1,0 +1,41 @@
+# Checks every push and pull request: TypeScript types, Rust tests and clippy.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+
+  backend:
+    # Windows: the platform most users run, and tauri-build needs the bundled
+    # helpers present, which the fetch script provides here.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Fetch helpers
+        shell: bash
+        run: bash scripts/fetch-helpers.sh
+      - name: Test
+        working-directory: src-tauri
+        run: cargo test
+      - name: Clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D clippy::correctness -D clippy::suspicious
