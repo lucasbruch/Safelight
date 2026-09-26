@@ -8,6 +8,11 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+# The default token is read-only; creating the draft release and uploading
+# the installers needs write access to the repository's contents.
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:
