@@ -62,9 +62,17 @@ case "$(uname -s)" in
     cp "$T"/ort/*/lib/libonnxruntime.${ORT_VERSION}.dylib "$R/onnxruntime/macos/libonnxruntime.dylib"
     cp "$T"/ort/*/LICENSE "$R/onnxruntime/macos/"
 
-    fetch "https://evermeet.cx/ffmpeg/ffmpeg-${FFMPEG_VERSION}.zip" ff.zip \
-      4acc0be580f9b2788029eb7bd4d645ff87968911b0a62aeeb3940d42d54558d5
-    mkdir -p "$R/ffmpeg/macos"; unzip -oq "$T/ff.zip" -d "$R/ffmpeg/macos"; chmod +x "$R/ffmpeg/macos/ffmpeg" ;;
+    # Native builds for both architectures, joined into one universal binary like the
+    # app itself. An Intel-only ffmpeg runs under Rosetta and makes macOS warn about it.
+    FF="https://ffmpeg.martin-riedl.de/download/macos"
+    fetch "$FF/arm64/1789931890_${FFMPEG_VERSION}/ffmpeg.zip" ff-arm64.zip \
+      c8ed4c4e6978a03c485edbfe4e0a5dc2380f8a30bba5150531b31b094492d924
+    fetch "$FF/amd64/1789931006_${FFMPEG_VERSION}/ffmpeg.zip" ff-x86_64.zip \
+      7c6b4125b191cbf773832dc51f424cf2b6bb7da43007d1e066f95909e47cacd4
+    unzip -oq "$T/ff-arm64.zip" -d "$T/ff-arm64"; unzip -oq "$T/ff-x86_64.zip" -d "$T/ff-x86_64"
+    mkdir -p "$R/ffmpeg/macos"
+    lipo -create "$T/ff-arm64/ffmpeg" "$T/ff-x86_64/ffmpeg" -output "$R/ffmpeg/macos/ffmpeg"
+    chmod +x "$R/ffmpeg/macos/ffmpeg" ;;
   *) echo "Unsupported OS"; exit 1 ;;
 esac
 echo "Helpers ready in $R"
