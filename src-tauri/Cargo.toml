@@ -1,6 +1,6 @@
 [package]
 name = "grabit"
-version = "0.1.0"
+version = "0.2.0"
 description = "Import, cull and hand off camera cards"
 authors = ["bruchhage"]
 edition = "2021"
