@@ -56,14 +56,6 @@ Everything Safelight needs (ExifTool, ffmpeg, LibRaw, ONNX Runtime) is included.
    ```
 
    Then open Safelight again.
-4. **Apple Silicon Macs (M1 and newer):** the bundled ffmpeg, which makes video previews, is an Intel program, so it needs
-   Apple's Rosetta. If you've never installed Rosetta, run this once in Terminal:
-
-   ```bash
-   softwareupdate --install-rosetta --agree-to-license
-   ```
-
-   Without it, photos work normally, but clips show *"This clip can't be played in Safelight"*.
 
 ## First start
 
@@ -109,7 +101,6 @@ delete this folder:
 | Windows: nothing happens after "Run anyway" | Look for the installer window behind other windows, or run the `.exe` again. |
 | macOS: "can't be opened because Apple cannot check it" | Follow step 2 of [macOS](#macos) (Open Anyway / right-click → Open). |
 | macOS: "is damaged and can't be opened" | Run the `xattr` command from step 3 of [macOS](#macos). |
-| Clips won't play on an Apple Silicon Mac | Install Rosetta (step 4 of [macOS](#macos)), then reopen the project. |
 | A card isn't detected | It needs a `DCIM` folder (or `PRIVATE/M4ROOT` for Sony video). Drives holding your projects or backup folder are ignored on purpose. Use **Import from a folder…** for anything else. |
 | "Couldn't read the photos' metadata (ExifTool failed)" | Reinstall Safelight. On a Mac, also run the `xattr` command above. |
 | AI helper download fails | Check your internet connection and try again. A download that arrives damaged is discarded automatically. |
