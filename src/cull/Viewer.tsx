@@ -139,7 +139,7 @@ function VideoPlayer({ root, item, poster }: { root: string; item: Item; poster:
   if (url) {
     return (
       <video key={url} src={url} poster={item.previewState === 1 ? poster : undefined} controls autoPlay
-        style={{ maxWidth: "100%", maxHeight: "100%" }} onMouseDown={stop} onMouseUp={stop} />
+        onMouseDown={stop} onMouseUp={stop} />
     );
   }
   return (
