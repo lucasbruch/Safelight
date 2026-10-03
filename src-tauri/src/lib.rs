@@ -105,6 +105,7 @@ pub fn run() {
             commands::open_project,
             commands::set_rating,
             commands::set_flag,
+            commands::edit_tags,
             commands::move_rejects,
             commands::trash_rejects,
             commands::full_image,

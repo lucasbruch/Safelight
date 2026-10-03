@@ -85,7 +85,7 @@ export default function Cull({ root, progress, onBack, notify }: Props) {
     const byId = new Map(updated.map((u) => [u.id, u]));
     setItems((cur) => cur.map((i) => {
       const u = byId.get(i.id);
-      return u ? { ...u, flag: i.flag, rating: i.rating, movedToRejected: i.movedToRejected } : i;
+      return u ? { ...u, flag: i.flag, rating: i.rating, movedToRejected: i.movedToRejected, tags: i.tags } : i;
     }));
   }, []);
 
@@ -191,6 +191,22 @@ export default function Cull({ root, progress, onBack, notify }: Props) {
     }
   }, [targets, snapshot, root, merge, notify, autoAdvance, move, view, reload]);
 
+  const editTags = useCallback(async (add: string[], remove: string[]) => {
+    const ids = targets();
+    if (!ids.length) return;
+    try {
+      merge(await api.editTags(root, ids, add, remove));
+    } catch (e) {
+      notify({ text: String(e), bad: true });
+      reload();
+    }
+  }, [targets, root, merge, notify, reload]);
+
+  const tagTargets = useMemo(() => {
+    const ids = new Set(targets());
+    return items.filter((i) => ids.has(i.id));
+  }, [targets, items]);
+
   const undoLast = useCallback(async () => {
     const u = undo.current.pop();
     if (!u) return;
@@ -262,6 +278,12 @@ export default function Cull({ root, progress, onBack, notify }: Props) {
       }
       else if (k === " ") { setView((v) => (v === "grid" ? "loupe" : "grid")); setZoom(false); }
       else if (k === "i") { press("i"); setShowInfo((s) => !s); }
+      else if (k === "t" && currentId != null) {
+        press("t");
+        setShowInfo(true);
+        // Once the panel is on screen.
+        requestAnimationFrame(() => document.getElementById("tag-input")?.focus());
+      }
       else if (e.key === "?" || (e.shiftKey && e.code === "Slash")) { press("?"); setShowKeys((s) => !s); }
       else if (k === "escape") {
         if (showKeys) setShowKeys(false);
@@ -274,7 +296,7 @@ export default function Cull({ root, progress, onBack, notify }: Props) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [move, apply, undoLast, view, zoom, shown, showKeys, press]);
+  }, [move, apply, undoLast, view, zoom, shown, showKeys, press, currentId]);
 
   // ---- bulk actions ----------------------------------------------------------
   const doMoveRejects = async () => {
@@ -447,7 +469,16 @@ export default function Cull({ root, progress, onBack, notify }: Props) {
             </div>
           </div>
         </div>
-        {showInfo && <InfoPanel root={root} item={current} count={selection.size} />}
+        {showInfo && (
+          <InfoPanel
+            root={root}
+            item={current}
+            count={selection.size}
+            tagTargets={tagTargets}
+            tagSuggestions={[...options.userTags, ...options.tags]}
+            onEditTags={editTags}
+          />
+        )}
       </div>
 
       {sending && <SendDialog root={root} items={items} selection={selection} onClose={() => setSending(false)} />}
@@ -524,6 +555,7 @@ const SHORTCUTS: [string[], string][] = [
   [["C"], "Compare"],
   [["Z"], "Zoom to 100 %"],
   [["I"], "Info panel"],
+  [["T"], "Add a tag"],
   [["Ctrl", "A"], "Select all shown"],
   [["Ctrl", "Z"], "Undo"],
   [["Esc"], "Back out, clear selection"],

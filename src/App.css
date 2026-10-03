@@ -396,6 +396,14 @@ select.input { padding-right: 8px; }
 .meter > div { height: 100%; }
 .reason-list { display: flex; flex-wrap: wrap; gap: 5px; }
 .tag { font-size: 12px; padding: 2px 8px; border-radius: 3px; background: var(--key); border: 1px solid var(--line); color: var(--muted); }
+.tag.mine { display: inline-flex; align-items: center; gap: 3px; padding-right: 2px; color: var(--text); border-color: var(--line-strong); }
+.tag.mine.partial { border-style: dashed; color: var(--muted); }
+.tag.mine button {
+  display: grid; place-items: center; width: 16px; height: 16px; padding: 0; border: 0; border-radius: 2px;
+  background: none; color: var(--faint); cursor: pointer;
+}
+.tag.mine button:hover { color: var(--text); background: var(--key-hi); }
+.tag-input { height: 32px; font-size: 13px; }
 
 .popover {
   position: absolute; z-index: 40; top: calc(100% + 6px); left: 0; min-width: 300px;

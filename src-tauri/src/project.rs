@@ -80,6 +80,30 @@ pub struct Item {
     pub ai_state: i64,
     pub ai: Option<Ai>,
     pub video: Option<VideoInfo>,
+    /// Tags you added yourself; kept apart from the AI's so re-running it never drops them.
+    pub tags: Vec<String>,
+}
+
+impl Item {
+    /// Your tags, then the AI's, without repeats: what editors receive as keywords.
+    pub fn keywords(&self) -> Vec<String> {
+        let mut out: Vec<String> = vec![];
+        for t in self.tags.iter().chain(self.ai.iter().flat_map(|a| a.tags.iter())) {
+            if !out.iter().any(|o| o.eq_ignore_ascii_case(t)) {
+                out.push(t.clone());
+            }
+        }
+        out
+    }
+}
+
+/// A tag as typed, made safe for XMP, Lightroom and Resolve: one line, no commas
+/// (editors split keyword lists on them), single spaces, at most 64 characters.
+pub fn clean_tag(t: &str) -> Option<String> {
+    let t: String = t.split(|c: char| c.is_whitespace() || c == ',').filter(|w| !w.is_empty()).collect::<Vec<_>>().join(" ");
+    let t: String = t.chars().take(64).collect();
+    let t = t.trim().to_string();
+    (!t.is_empty()).then_some(t)
 }
 
 const SCHEMA: &str = r#"
@@ -138,6 +162,7 @@ impl Project {
         conn.execute_batch(SCHEMA)?;
         // Columns added after the first release; "duplicate column" means it's already there.
         let _ = conn.execute("ALTER TABLE items ADD COLUMN video TEXT", []);
+        let _ = conn.execute("ALTER TABLE items ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'", []);
         Ok(Self { root: root.to_path_buf(), db: Mutex::new(conn) })
     }
 
@@ -236,6 +261,7 @@ impl Project {
         let meta: String = r.get("meta")?;
         let ai: Option<String> = r.get("ai")?;
         let video: Option<String> = r.get("video")?;
+        let tags: String = r.get("tags")?;
         Ok(Item {
             id: r.get("id")?,
             rel_path: r.get("rel_path")?,
@@ -252,10 +278,11 @@ impl Project {
             ai_state: r.get("ai_state")?,
             ai: ai.and_then(|a| serde_json::from_str(&a).ok()),
             video: video.and_then(|v| serde_json::from_str(&v).ok()),
+            tags: serde_json::from_str(&tags).unwrap_or_default(),
         })
     }
 
-    const ITEM_COLS: &'static str = "id, rel_path, kind, file_name, size, captured_at, camera, meta, rating, flag, moved_to_rejected, preview_state, ai_state, ai, video";
+    const ITEM_COLS: &'static str = "id, rel_path, kind, file_name, size, captured_at, camera, meta, rating, flag, moved_to_rejected, preview_state, ai_state, ai, video, tags";
 
     pub fn items(&self) -> Result<Vec<Item>> {
         let db = self.db.lock();
@@ -303,6 +330,30 @@ impl Project {
 
     pub fn set_flag(&self, ids: &[i64], flag: i64) -> Result<()> {
         self.update_each("UPDATE items SET flag = ?1 WHERE id = ?2", ids, flag.clamp(-1, 1))
+    }
+
+    /// Adds and removes tags on each photo, in one transaction. Matching ignores case,
+    /// so "Bride" isn't added next to "bride".
+    pub fn edit_tags(&self, ids: &[i64], add: &[String], remove: &[String]) -> Result<()> {
+        let mut db = self.db.lock();
+        let tx = db.transaction()?;
+        {
+            let mut get = tx.prepare("SELECT tags FROM items WHERE id = ?1")?;
+            let mut put = tx.prepare("UPDATE items SET tags = ?1 WHERE id = ?2")?;
+            for id in ids {
+                let Some(cur) = get.query_row([id], |r| r.get::<_, String>(0)).optional()? else { continue };
+                let mut tags: Vec<String> = serde_json::from_str(&cur).unwrap_or_default();
+                tags.retain(|t| !remove.iter().any(|r| r.eq_ignore_ascii_case(t)));
+                for a in add {
+                    if !tags.iter().any(|t| t.eq_ignore_ascii_case(a)) {
+                        tags.push(a.clone());
+                    }
+                }
+                put.execute(params![serde_json::to_string(&tags)?, id])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
     }
 
     pub fn delete_items(&self, ids: &[i64]) -> Result<()> {
@@ -499,6 +550,36 @@ mod tests {
         let items = p.items().unwrap();
         assert!(items.iter().all(|i| i.rating == 5));
         assert_eq!(items.iter().filter(|i| i.flag == -1).count(), 2);
+    }
+
+    #[test]
+    fn tags_add_remove_and_ignore_case() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = Project::open(dir.path()).unwrap();
+        let (a, b) = (add(&p, "a.jpg"), add(&p, "b.jpg"));
+        p.edit_tags(&[a, b], &["Bride".into(), "Venue".into()], &[]).unwrap();
+        p.edit_tags(&[a], &["bride".into()], &["venue".into()]).unwrap();
+        assert_eq!(p.item(a).unwrap().tags, ["Bride"]);
+        assert_eq!(p.item(b).unwrap().tags, ["Bride", "Venue"]);
+    }
+
+    #[test]
+    fn keywords_put_your_tags_first_without_repeats() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = Project::open(dir.path()).unwrap();
+        let id = add(&p, "a.jpg");
+        p.edit_tags(&[id], &["Dog".into()], &[]).unwrap();
+        let mut it = p.item(id).unwrap();
+        it.ai = Some(Ai { tags: vec!["dog".into(), "beach".into()], ..Default::default() });
+        assert_eq!(it.keywords(), ["Dog", "beach"]);
+    }
+
+    #[test]
+    fn clean_tag_makes_one_safe_keyword() {
+        assert_eq!(clean_tag("  golden\thour \n").as_deref(), Some("golden hour"));
+        assert_eq!(clean_tag("a,b").as_deref(), Some("a b"));
+        assert_eq!(clean_tag(" , ").as_deref(), None);
+        assert_eq!(clean_tag(&"x".repeat(100)).map(|t| t.len()), Some(64));
     }
 }
 

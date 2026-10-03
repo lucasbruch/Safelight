@@ -183,9 +183,27 @@ fn write_xmp(state: &AppState, p: &Project, item: &Item) {
             flag: item.flag,
             artist: s.artist.clone(),
             copyright: s.copyright.clone(),
-            tags: item.ai.as_ref().map(|a| a.tags.clone()).unwrap_or_default(),
+            tags: item.keywords(),
         },
     );
+}
+
+/// Adds `add` to and removes `remove` from every photo in `ids`. Typed text is
+/// split on commas, so "bride, groom" adds two tags.
+#[tauri::command]
+pub async fn edit_tags(state: St<'_>, root: String, ids: Vec<i64>, add: Vec<String>, remove: Vec<String>) -> Res<Vec<Item>> {
+    let st = state.inner().clone();
+    blocking(move || {
+        let p = st.existing_project(Path::new(&root))?;
+        let add: Vec<String> = add.iter().flat_map(|t| t.split(',')).filter_map(crate::project::clean_tag).collect();
+        p.edit_tags(&ids, &add, &remove)?;
+        let items: Vec<Item> = ids.iter().filter_map(|id| p.item(*id).ok()).collect();
+        for it in &items {
+            write_xmp(&st, &p, it);
+        }
+        Ok(items)
+    })
+    .await
 }
 
 #[tauri::command]

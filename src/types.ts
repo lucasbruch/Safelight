@@ -95,6 +95,8 @@ export interface Item {
   aiState: number;
   ai: Ai | null;
   video: VideoInfo | null;
+  /** Tags you added yourself; the AI's are in `ai.tags`. */
+  tags: string[];
 }
 
 export interface ProjectSummary {

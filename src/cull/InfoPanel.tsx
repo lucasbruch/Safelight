@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { formatBytes, formatDate, formatShutter, mediaPath } from "../api";
 import type { Item } from "../types";
@@ -5,7 +6,17 @@ import { Stars } from "./bits";
 import { Icon } from "../components/Icon";
 import { Lamp } from "../components/Deck";
 
-export default function InfoPanel({ root, item, count }: { root: string; item: Item | null; count: number }) {
+interface Props {
+  root: string;
+  item: Item | null;
+  count: number;
+  /** The photos a tag edit applies to: the selection, or just the current photo. */
+  tagTargets: Item[];
+  tagSuggestions: string[];
+  onEditTags: (add: string[], remove: string[]) => void;
+}
+
+export default function InfoPanel({ root, item, count, tagTargets, tagSuggestions, onEditTags }: Props) {
   if (!item) return <aside className="sidebar muted">Nothing selected.</aside>;
   const m = item.meta;
   const ai = item.ai;
@@ -23,6 +34,8 @@ export default function InfoPanel({ root, item, count }: { root: string; item: I
           <Stars n={item.rating} size={13} />
         </div>
       )}
+
+      <TagEditor items={tagTargets.length ? tagTargets : [item]} suggestions={tagSuggestions} onEdit={onEditTags} />
 
       {ai && item.aiState === 1 && (
         <div className="block">
@@ -81,6 +94,54 @@ export default function InfoPanel({ root, item, count }: { root: string; item: I
         </button>
       </div>
     </aside>
+  );
+}
+
+/** Your own tags. With several photos selected it lists every tag on any of them;
+ *  a dashed tag is only on some, and adding or removing applies to all. */
+function TagEditor({ items, suggestions, onEdit }: { items: Item[]; suggestions: string[]; onEdit: (add: string[], remove: string[]) => void }) {
+  const [text, setText] = useState("");
+  const counts = new Map<string, number>();
+  for (const it of items) for (const t of it.tags) counts.set(t, (counts.get(t) ?? 0) + 1);
+  const tags = [...counts.keys()];
+  const has = (s: string) => tags.some((t) => t.toLowerCase() === s.toLowerCase());
+  const add = () => {
+    if (!text.trim()) return;
+    onEdit([text], []);
+    setText("");
+  };
+  return (
+    <div className="block">
+      <h4>Tags{items.length > 1 ? ` · ${items.length} selected` : ""}</h4>
+      {tags.length > 0 && (
+        <div className="reason-list" style={{ marginBottom: 8 }}>
+          {tags.map((t) => {
+            const n = counts.get(t)!;
+            return (
+              <span className={`tag mine ${n < items.length ? "partial" : ""}`} key={t} title={n < items.length ? `On ${n} of ${items.length} selected` : undefined}>
+                {t}
+                <button aria-label={`Remove tag ${t}`} title="Remove" onClick={() => onEdit([], [t])}><Icon name="x" size={10} /></button>
+              </span>
+            );
+          })}
+        </div>
+      )}
+      <input
+        id="tag-input"
+        className="input tag-input"
+        list="tag-suggestions"
+        placeholder={items.length > 1 ? `Add a tag to ${items.length} photos` : "Add a tag"}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { e.preventDefault(); add(); }
+          else if (e.key === "Escape") { setText(""); e.currentTarget.blur(); }
+        }}
+      />
+      <datalist id="tag-suggestions">
+        {suggestions.filter((s) => !has(s)).slice(0, 200).map((s) => <option key={s} value={s} />)}
+      </datalist>
+    </div>
   );
 }
 

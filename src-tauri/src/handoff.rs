@@ -86,7 +86,7 @@ pub fn lr_photos(p: &Project, ids: &[i64]) -> Result<Vec<LrPhoto>> {
             path: p.abs(&it.rel_path, false),
             rating: it.rating,
             flag: it.flag,
-            keywords: it.ai.map(|a| a.tags).unwrap_or_default(),
+            keywords: it.keywords(),
         })
         .filter(|f| f.path.exists())
         .collect();
@@ -380,7 +380,7 @@ pub fn resolve(p: &Project, items: &[Item]) -> Result<String> {
         lua.push_str("}, files = {\n");
         for it in its {
             let path = p.abs(&it.rel_path, false);
-            let keywords = it.ai.as_ref().map(|a| a.tags.join(", ")).unwrap_or_default();
+            let keywords = it.keywords().join(", ");
             let comment = if it.rating > 0 { "\u{2605}".repeat(it.rating as usize) } else { String::new() };
             lua.push_str(&format!(
                 "    {{ path = {}, pick = {}, keywords = {}, comment = {} }},\n",

@@ -79,7 +79,7 @@ export function applyFilters(items: Item[], f: Filters): Item[] {
     if (f.flash === "yes" && it.meta.flash !== true) return false;
     if (f.flash === "no" && it.meta.flash !== false) return false;
     if (f.ai.length && !f.ai.some((k) => aiMatch(it, k))) return false;
-    if (f.tags.length && !f.tags.some((t) => it.ai?.tags.includes(t))) return false;
+    if (f.tags.length && !f.tags.some((t) => it.tags.includes(t) || it.ai?.tags.includes(t))) return false;
     if (f.people.length && !f.people.some((p) => it.ai?.people.includes(p))) return false;
     return true;
   });
@@ -104,6 +104,9 @@ export interface FilterOptions {
   cameras: string[];
   dates: string[];
   lenses: string[];
+  /** Tags you added, A–Z. */
+  userTags: string[];
+  /** The AI's content tags, most common first. */
   tags: string[];
   people: number[];
   hasVideo: boolean;
@@ -112,7 +115,7 @@ export interface FilterOptions {
 
 export function filterOptions(items: Item[]): FilterOptions {
   const cams = new Set<string>(), dates = new Set<string>(), lenses = new Set<string>();
-  const tags = new Map<string, number>(), people = new Set<number>();
+  const tags = new Map<string, number>(), userTags = new Set<string>(), people = new Set<number>();
   let hasVideo = false, hasFlash = false;
   for (const it of items) {
     cams.add(it.camera);
@@ -120,6 +123,7 @@ export function filterOptions(items: Item[]): FilterOptions {
     if (it.meta.lens) lenses.add(it.meta.lens);
     if (it.kind === "video") hasVideo = true;
     if (it.meta.flash) hasFlash = true;
+    it.tags.forEach((t) => userTags.add(t));
     it.ai?.tags.forEach((t) => tags.set(t, (tags.get(t) ?? 0) + 1));
     it.ai?.people.forEach((p) => people.add(p));
   }
@@ -127,7 +131,8 @@ export function filterOptions(items: Item[]): FilterOptions {
     cameras: [...cams].sort(),
     dates: [...dates].sort(),
     lenses: [...lenses].sort(),
-    tags: [...tags.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t),
+    userTags: [...userTags].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })),
+    tags: [...tags.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t).filter((t) => !userTags.has(t)),
     people: [...people].sort((a, b) => a - b),
     hasVideo,
     hasFlash,

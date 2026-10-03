@@ -140,6 +140,13 @@ export default function FilterBar({ filters: f, setFilters, options, counts, sho
                 ))}
               </Section>
             )}
+            {options.userTags.length > 0 && (
+              <Section title="Your tags">
+                {options.userTags.map((t) => (
+                  <button key={t} className={`chip ${f.tags.includes(t) ? "on" : ""}`} onClick={() => set({ tags: toggle(f.tags, t) })}>{t}</button>
+                ))}
+              </Section>
+            )}
             {options.tags.length > 0 && (
               <Section title="Content">
                 {options.tags.slice(0, 30).map((t) => (

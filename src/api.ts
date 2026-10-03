@@ -22,6 +22,7 @@ export const api = {
   openProject: (root: string) => invoke<{ root: string; name: string; items: Item[] }>("open_project", { root }),
   setRating: (root: string, ids: number[], rating: number) => invoke<Item[]>("set_rating", { root, ids, rating }),
   setFlag: (root: string, ids: number[], flag: number) => invoke<Item[]>("set_flag", { root, ids, flag }),
+  editTags: (root: string, ids: number[], add: string[], remove: string[]) => invoke<Item[]>("edit_tags", { root, ids, add, remove }),
   moveRejects: (root: string) => invoke<{ moved: number; failed: string[] }>("move_rejects", { root }),
   trashRejects: (root: string) => invoke<number>("trash_rejects", { root }),
   fullImage: (root: string, id: number) => invoke<string>("full_image", { root, id }),
