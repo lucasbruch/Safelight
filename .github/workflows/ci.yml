@@ -39,3 +39,22 @@ jobs:
       - name: Clippy
         working-directory: src-tauri
         run: cargo clippy --all-targets -- -D clippy::correctness -D clippy::suspicious
+
+  backend-macos:
+    # Catches breakage in the macOS helpers and macOS-only code before a release
+    # does. Kept to a check: macOS runner minutes cost 10x on private repos.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Fetch helpers
+        run: bash scripts/fetch-helpers.sh
+      # An Intel-only helper runs under Rosetta and makes macOS warn about the app.
+      - name: ffmpeg is universal
+        run: lipo src-tauri/resources/ffmpeg/macos/ffmpeg -verify_arch arm64 x86_64
+      - name: Check
+        working-directory: src-tauri
+        run: cargo check --all-targets
