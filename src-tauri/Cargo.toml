@@ -1,6 +1,6 @@
 [package]
 name = "grabit"
-version = "0.2.0"
+version = "0.2.1"
 description = "Import, cull and hand off camera cards"
 authors = ["bruchhage"]
 license = "GPL-3.0-only"
