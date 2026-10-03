@@ -279,7 +279,9 @@ select.input { padding-right: 8px; }
 }
 .cell:hover .img-wrap { outline-color: #3a3c42; }
 .cell.selected .img-wrap { outline: 1px solid rgba(238, 241, 245, .5); outline-offset: 2px; }
-.cell img, .cell video { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+/* Fill the frame and letterbox: percentages resolve against the positioned
+   frame, so WebKit (macOS) and WebView2 (Windows) size the thumbnail alike. */
+.cell .img-wrap img, .cell .img-wrap video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
 .cell.rejected .img-wrap img { opacity: .3; }
 /* The current frame is registered with crop marks, never a coloured border. */
 .cell.current::after, .compare-pane.current::after {
@@ -335,6 +337,7 @@ select.input { padding-right: 8px; }
 
 .loupe { flex: 1; min-height: 0; position: relative; display: flex; align-items: center; justify-content: center; background: var(--well); overflow: hidden; }
 .loupe img, .loupe video { max-width: 100%; max-height: 100%; object-fit: contain; }
+.loupe:not(.zoomed) img { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; }
 .loupe.zoomed { cursor: grab; display: block; }
 .loupe.zoomed img { max-width: none; max-height: none; position: absolute; }
 .loupe .loading { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); }
