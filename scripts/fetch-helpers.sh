@@ -72,6 +72,8 @@ case "$(uname -s)" in
     unzip -oq "$T/ff-arm64.zip" -d "$T/ff-arm64"; unzip -oq "$T/ff-x86_64.zip" -d "$T/ff-x86_64"
     mkdir -p "$R/ffmpeg/macos"
     lipo -create "$T/ff-arm64/ffmpeg" "$T/ff-x86_64/ffmpeg" -output "$R/ffmpeg/macos/ffmpeg"
+    # The download is the bare program; the GPL asks for its license text alongside.
+    cp "$R/../../LICENSE" "$R/ffmpeg/macos/LICENSE"
     chmod +x "$R/ffmpeg/macos/ffmpeg" ;;
   *) echo "Unsupported OS"; exit 1 ;;
 esac

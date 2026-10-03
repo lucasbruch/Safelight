@@ -3,6 +3,7 @@ name = "grabit"
 version = "0.2.0"
 description = "Import, cull and hand off camera cards"
 authors = ["bruchhage"]
+license = "GPL-3.0-only"
 edition = "2021"
 
 [lib]

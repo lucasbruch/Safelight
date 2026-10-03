@@ -4,7 +4,9 @@
       "resources/exiftool/windows/": "resources/exiftool/windows/",
       "resources/libraw/windows/": "resources/libraw/windows/",
       "resources/onnxruntime/windows/": "resources/onnxruntime/windows/",
-      "resources/ffmpeg/windows/": "resources/ffmpeg/windows/"
+      "resources/ffmpeg/windows/": "resources/ffmpeg/windows/",
+      "../LICENSE": "LICENSE.txt",
+      "../THIRD-PARTY-NOTICES.md": "THIRD-PARTY-NOTICES.md"
     }
   }
 }

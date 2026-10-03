@@ -3,7 +3,9 @@
     "resources": {
       "resources/exiftool/unix/": "resources/exiftool/unix/",
       "resources/onnxruntime/macos/": "resources/onnxruntime/macos/",
-      "resources/ffmpeg/macos/": "resources/ffmpeg/macos/"
+      "resources/ffmpeg/macos/": "resources/ffmpeg/macos/",
+      "../LICENSE": "LICENSE.txt",
+      "../THIRD-PARTY-NOTICES.md": "THIRD-PARTY-NOTICES.md"
     },
     "macOS": {
       "minimumSystemVersion": "11.0"

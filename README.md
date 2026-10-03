@@ -48,7 +48,13 @@ Push a tag like `v0.1.0`. GitHub Actions (`.github/workflows/release.yml`) build
 universal macOS `.dmg` and attaches them to a draft release. Builds aren't code-signed yet, so the first launch shows a
 Windows SmartScreen or macOS Gatekeeper warning ("More info → Run anyway" / right-click → Open).
 
+## License
+
+Safelight is free software under the [GNU General Public License v3.0](LICENSE).
+
 ## Third-party components
 
 ExifTool (Artistic/GPL) · FFmpeg (GPL build, for video previews) · LibRaw (LGPL-2.1/CDDL) · ONNX Runtime (MIT) · YuNet & SFace (OpenCV Zoo, MIT/Apache-2.0) ·
-MediaPipe Face Mesh V2 (Apache-2.0) · CLIP ViT-B/32 (MIT) · LAION aesthetic predictor (MIT).
+MediaPipe Face Mesh V2 (Apache-2.0) · CLIP ViT-B/32 (MIT) · LAION aesthetic predictor (MIT) · Barlow fonts (OFL-1.1).
+Licenses, versions and where to get each component's source code: [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+Both files are also included in the installed app.
