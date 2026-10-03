@@ -17,7 +17,7 @@ fn unique(prefix: &str) -> String {
 }
 
 pub const PREVIEW_MAX: u32 = 2560;
-pub const THUMB_MAX: u32 = 480;
+pub const THUMB_MAX: u32 = 768;
 
 /// Extracts all embedded JPEGs into `dir` and returns the largest one's path.
 pub fn extract_largest(exif: &ExifTool, src: &Path, dir: &Path, prefix: &str) -> Result<Option<PathBuf>> {
@@ -97,7 +97,7 @@ fn decode(p: &Path) -> Result<DynamicImage> {
     Ok(image::ImageReader::open(p)?.with_guessed_format()?.decode()?)
 }
 
-/// Builds `<id>_p.jpg` (≤2560 px) and `<id>_t.jpg` (≤480 px), both upright.
+/// Builds `<id>_p.jpg` (≤2560 px) and `<id>_t.jpg` (≤768 px), both upright.
 pub fn build(exif: &ExifTool, project: &Project, id: i64, src: &Path, orientation: Option<i64>) -> Result<()> {
     let img = decode_for_preview(exif, project, id, src)?;
     save_previews(project, id, orient(img, orientation))
@@ -147,7 +147,7 @@ fn convert_heif(src: &Path, out: &Path) -> Result<()> {
     }
 }
 
-/// Writes the 2560 px preview and 480 px thumbnail for an (upright) image.
+/// Writes the 2560 px preview and 768 px thumbnail for an (upright) image.
 pub fn save_previews(project: &Project, id: i64, img: DynamicImage) -> Result<()> {
     let preview = fit(img, PREVIEW_MAX, FilterType::Triangle);
     save_jpeg(&preview, &project.preview_path(id), 88)?;
