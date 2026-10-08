@@ -90,8 +90,62 @@ pub fn hash_file_on_disk(path: &Path) -> Result<String> {
 
 fn part_path(dest: &Path) -> PathBuf {
     let mut name = dest.file_name().unwrap_or_default().to_os_string();
-    name.push(".grabit-part");
+    name.push(".safelight-part");
     dest.with_file_name(name)
+}
+
+/// Renames `from` to `to`, failing if `to` exists. Plain `fs::rename` silently
+/// replaces it on both platforms, and checking first leaves a gap in between.
+pub fn rename_no_replace(from: &Path, to: &Path) -> std::io::Result<()> {
+    match rename_excl(from, to) {
+        Err(e) if e.kind() == std::io::ErrorKind::Unsupported => {
+            // The file system can't do it atomically (exFAT on macOS): check, then rename.
+            if to.symlink_metadata().is_ok() {
+                return Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, format!("{} already exists", to.display())));
+            }
+            fs::rename(from, to)
+        }
+        r => r,
+    }
+}
+
+#[cfg(windows)]
+fn rename_excl(from: &Path, to: &Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_COPY_ALLOWED};
+    let wide = |p: &Path| p.as_os_str().encode_wide().chain(Some(0)).collect::<Vec<u16>>();
+    let (f, t) = (wide(from), wide(to));
+    // Without MOVEFILE_REPLACE_EXISTING this fails when `to` exists.
+    if unsafe { MoveFileExW(f.as_ptr(), t.as_ptr(), MOVEFILE_COPY_ALLOWED) } == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn rename_excl(from: &Path, to: &Path) -> std::io::Result<()> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+    let c = |p: &Path| CString::new(p.as_os_str().as_bytes()).map_err(|_| std::io::ErrorKind::InvalidInput);
+    let (f, t) = (c(from)?, c(to)?);
+    if unsafe { libc::renamex_np(f.as_ptr(), t.as_ptr(), libc::RENAME_EXCL) } == 0 {
+        return Ok(());
+    }
+    let e = std::io::Error::last_os_error();
+    match e.raw_os_error() {
+        Some(libc::ENOTSUP) | Some(libc::EINVAL) => Err(std::io::ErrorKind::Unsupported.into()),
+        _ => Err(e),
+    }
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn rename_excl(from: &Path, to: &Path) -> std::io::Result<()> {
+    // A hard link refuses to replace an existing file; the old name then goes.
+    match fs::hard_link(from, to) {
+        Ok(()) => fs::remove_file(from),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Err(e),
+        Err(_) => Err(std::io::ErrorKind::Unsupported.into()),
+    }
 }
 
 pub struct Outcome {
@@ -178,12 +232,12 @@ pub fn copy_verified(
             if let Some(t) = src_mtime {
                 let _ = filetime::set_file_mtime(&part, t);
             }
-            // `rename` would silently replace an existing file on both platforms.
-            if dests[i].exists() {
-                bail!("{} already exists; it was left untouched", dests[i].display());
+            match rename_no_replace(&part, &dests[i]) {
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    bail!("{} already exists; it was left untouched", dests[i].display())
+                }
+                r => r.with_context(|| format!("finalising {}", dests[i].display())),
             }
-            fs::rename(&part, &dests[i]).with_context(|| format!("finalising {}", dests[i].display()))?;
-            Ok(())
         })();
         if let Err(e) = finish {
             let _ = fs::remove_file(part_path(&dests[i]));
@@ -227,7 +281,7 @@ mod tests {
         let src = dir.path().join("s.bin");
         fs::write(&src, b"hello world").unwrap();
         let d = dir.path().join("d.bin");
-        let out = copy_verified(&src, &[d.clone()], &AtomicBool::new(false), |_| {}).unwrap();
+        let out = copy_verified(&src, std::slice::from_ref(&d), &AtomicBool::new(false), |_| {}).unwrap();
         let mut bytes = fs::read(&d).unwrap();
         bytes[0] ^= 1;
         fs::write(&d, bytes).unwrap();
@@ -241,10 +295,23 @@ mod tests {
         fs::write(&src, b"new").unwrap();
         let d = dir.path().join("d.bin");
         fs::write(&d, b"old").unwrap();
-        let out = copy_verified(&src, &[d.clone()], &AtomicBool::new(false), |_| {}).unwrap();
+        let out = copy_verified(&src, std::slice::from_ref(&d), &AtomicBool::new(false), |_| {}).unwrap();
         assert!(out.results[0].is_err());
         assert_eq!(fs::read(&d).unwrap(), b"old");
         assert!(!part_path(&d).exists());
+    }
+
+    #[test]
+    fn rename_never_replaces() {
+        let dir = tempfile::tempdir().unwrap();
+        let (a, b, c) = (dir.path().join("a"), dir.path().join("b"), dir.path().join("c"));
+        fs::write(&a, b"a").unwrap();
+        fs::write(&b, b"b").unwrap();
+        let e = rename_no_replace(&a, &b).unwrap_err();
+        assert_eq!(e.kind(), std::io::ErrorKind::AlreadyExists);
+        assert_eq!(fs::read(&b).unwrap(), b"b");
+        rename_no_replace(&a, &c).unwrap();
+        assert!(!a.exists() && fs::read(&c).unwrap() == b"a");
     }
 
     #[test]
@@ -276,7 +343,7 @@ mod tests {
         let src = dir.path().join("s.bin");
         fs::write(&src, b"data").unwrap();
         let d = dir.path().join("out/s.bin");
-        assert!(copy_verified(&src, &[d.clone()], &AtomicBool::new(true), |_| {}).is_err());
+        assert!(copy_verified(&src, std::slice::from_ref(&d), &AtomicBool::new(true), |_| {}).is_err());
         assert!(!part_path(&d).exists() && !d.exists());
     }
 

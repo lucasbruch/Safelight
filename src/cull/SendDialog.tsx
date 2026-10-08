@@ -10,10 +10,12 @@ interface Props {
   root: string;
   items: Item[];
   selection: Set<number>;
+  /** Resolves once every pick and rating made so far is saved. */
+  settled: () => Promise<void>;
   onClose: () => void;
 }
 
-export default function SendDialog({ root, items, selection, onClose }: Props) {
+export default function SendDialog({ root, items, selection, settled, onClose }: Props) {
   const [status, setStatus] = useState<HandoffStatus | null>(null);
   const picks = useMemo(() => items.filter((i) => i.flag === 1 && !i.movedToRejected), [items]);
   const [scope, setScope] = useState<Scope>(picks.length ? "picks" : selection.size ? "selected" : "keepers");
@@ -36,6 +38,8 @@ export default function SendDialog({ root, items, selection, onClose }: Props) {
     setResult(null);
     try {
       const ids = chosen.map((i) => i.id);
+      // The editors read stars, picks and tags from disk: let your last key presses land first.
+      await settled();
       const msg = to === "lr" ? await api.sendToLightroom(root, ids) : await api.sendToResolve(root, ids);
       setResult({ text: msg });
     } catch (e) {

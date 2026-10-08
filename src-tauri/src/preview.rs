@@ -228,7 +228,7 @@ pub fn full(exif: &ExifTool, project: &Project, id: i64, src: &Path, raw_width: 
             return match decode_raw(src, &out) {
                 Ok(()) => Ok(out),
                 Err(e) => {
-                    eprintln!("[safelight] raw decode failed for {}: {e:#}", src.display());
+                    log::warn!("raw decode failed for {}: {e:#}", src.display());
                     Ok(project.preview_path(id))
                 }
             };

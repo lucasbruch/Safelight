@@ -164,6 +164,8 @@ pub struct ScanSummary {
     pub new_videos: usize,
     pub new_bytes: u64,
     pub already_imported: usize,
+    /// Of those, rejects you sent to the Trash from Safelight.
+    pub trashed: usize,
     /// First capture date among the files that aren't imported yet (names new projects).
     pub first_new_date: Option<String>,
     /// Projects that already contain some of these files.
@@ -185,6 +187,7 @@ impl Scan {
             new_videos: 0,
             new_bytes: 0,
             already_imported: 0,
+            trashed: 0,
             first_new_date: None,
             already_in: vec![],
             cameras: vec![],
@@ -212,7 +215,8 @@ impl Scan {
                 s.new_bytes += f.size;
             } else {
                 s.already_imported += 1;
-                if let Some(a) = &f.already {
+                s.trashed += f.already.as_ref().is_some_and(|a| a.trashed) as usize;
+                if let Some(a) = f.already.as_ref().filter(|a| !a.trashed) {
                     projects.insert(
                         Path::new(&a.project_root).file_name().unwrap_or_default().to_string_lossy().into_owned(),
                     );
@@ -345,7 +349,8 @@ pub fn scan(
                 already: None,
             };
             f.key = ledger::key(&f.file_name(), f.size, f.captured_iso().as_deref());
-            f.already = ledger.get(&f.key)?.filter(still_exists);
+            // Deleted rejects count as imported: you already decided against them.
+            f.already = ledger.get(&f.key)?.filter(|s| s.trashed || still_exists(s));
             files.push(f);
         }
         progress(files.len(), total);

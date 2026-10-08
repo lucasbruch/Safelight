@@ -195,7 +195,7 @@ pub fn run(app: AppHandle, state: Arc<AppState>, scan: Arc<Scan>, project: Arc<P
             break;
         }
         p.current = f.file_name();
-        let res = (|| -> Result<Option<i64>> {
+        let res = (|| -> Result<i64> {
             let (rel, name) = free_name(&project, backup_root.as_deref(), f)?;
             let mut dests = vec![rel_to_path(&project.root, &rel)];
             if let Some(b) = &backup_root {
@@ -208,52 +208,81 @@ pub fn run(app: AppHandle, state: Arc<AppState>, scan: Arc<Scan>, project: Arc<P
                     emit(&p, &state);
                 }
             })?;
-            let mut results = out.results.into_iter();
-            if let Some(Err(e)) = results.next() {
-                return Err(e);
+            // Every file written for this shot, so it can all be taken back if the
+            // shot can't be recorded (an unrecorded copy would come back as `_1`).
+            let mut written = vec![];
+            let mut results = out.results.into_iter().zip(&dests);
+            match results.next() {
+                Some((Err(e), _)) => return Err(e),
+                Some((Ok(()), d)) => written.push(d.clone()),
+                None => {}
             }
-            if let Some(Err(e)) = results.next() {
-                backup_failed.push(FileError { file: f.file_name(), error: format!("{e:#}") });
+            match results.next() {
+                Some((Err(e), _)) => backup_failed.push(FileError { file: f.file_name(), error: format!("{e:#}") }),
+                Some((Ok(()), d)) => written.push(d.clone()),
+                None => {}
             }
 
-            // Sidecars follow the media file's (possibly de-duplicated) name.
-            let orig_stem = f.path.file_stem().unwrap_or_default().to_string_lossy().into_owned();
-            let new_stem = Path::new(&name).file_stem().unwrap_or_default().to_string_lossy().into_owned();
-            let mut sidecar_rels = vec![];
-            for sc in &f.sidecars {
-                let sc_name = sc.file_name().unwrap_or_default().to_string_lossy().into_owned();
-                let renamed = renamed_sidecar(&sc_name, &orig_stem, &new_stem);
-                let sc_rel = format!("{}/{renamed}", rel.rsplit_once('/').map(|x| x.0).unwrap_or(""));
-                let mut d = vec![rel_to_path(&project.root, &sc_rel)];
-                if let Some(b) = &backup_root {
-                    d.push(rel_to_path(b, &sc_rel));
-                }
-                match copy::copy_verified(sc, &d, &cancel, |n| p.bytes_done += n) {
-                    Ok(o) => {
-                        let mut r = o.results.into_iter();
-                        match r.next() {
-                            Some(Err(e)) => failed.push(FileError { file: sc_name.clone(), error: format!("{e:#}") }),
-                            _ => sidecar_rels.push(sc_rel),
-                        }
-                        if let Some(Err(e)) = r.next() {
-                            backup_failed.push(FileError { file: sc_name.clone(), error: format!("{e:#}") });
-                        }
+            let recorded = (|| -> Result<i64> {
+                // Sidecars follow the media file's (possibly de-duplicated) name.
+                let orig_stem = f.path.file_stem().unwrap_or_default().to_string_lossy().into_owned();
+                let new_stem = Path::new(&name).file_stem().unwrap_or_default().to_string_lossy().into_owned();
+                let mut sidecar_rels = vec![];
+                for sc in &f.sidecars {
+                    let sc_name = sc.file_name().unwrap_or_default().to_string_lossy().into_owned();
+                    let renamed = renamed_sidecar(&sc_name, &orig_stem, &new_stem);
+                    let sc_rel = format!("{}/{renamed}", rel.rsplit_once('/').map(|x| x.0).unwrap_or(""));
+                    let mut d = vec![rel_to_path(&project.root, &sc_rel)];
+                    if let Some(b) = &backup_root {
+                        d.push(rel_to_path(b, &sc_rel));
                     }
-                    Err(e) => failed.push(FileError { file: sc_name, error: format!("{e:#}") }),
+                    match copy::copy_verified(sc, &d, &cancel, |n| p.bytes_done += n) {
+                        Ok(o) => {
+                            let mut r = o.results.into_iter().zip(&d);
+                            match r.next() {
+                                Some((Err(e), _)) => failed.push(FileError { file: sc_name.clone(), error: format!("{e:#}") }),
+                                Some((Ok(()), path)) => {
+                                    written.push(path.clone());
+                                    sidecar_rels.push(sc_rel);
+                                }
+                                None => {}
+                            }
+                            match r.next() {
+                                Some((Err(e), _)) => backup_failed.push(FileError { file: sc_name.clone(), error: format!("{e:#}") }),
+                                Some((Ok(()), path)) => written.push(path.clone()),
+                                None => {}
+                            }
+                        }
+                        // Stopped halfway through a shot: undo the whole shot.
+                        Err(e) if cancel.load(Ordering::Relaxed) => return Err(e),
+                        Err(e) => failed.push(FileError { file: sc_name, error: format!("{e:#}") }),
+                    }
                 }
+                project.insert(&NewItem {
+                    rel_path: &rel,
+                    kind: f.kind,
+                    file_name: &name,
+                    size: f.size,
+                    hash: &out.hash,
+                    camera: &f.camera_label,
+                    meta: &f.meta,
+                    sidecars: &sidecar_rels,
+                })
+            })();
+            let id = match recorded {
+                Ok(id) => id,
+                Err(e) => {
+                    for w in &written {
+                        let _ = std::fs::remove_file(w);
+                    }
+                    return Err(e);
+                }
+            };
+            // In the project now, so the shot counts as imported. If the ledger can't be
+            // updated, the only cost is the card offering it again later.
+            if let Err(e) = state.ledger.record(&f.key, &p.project_root, &rel, &out.hash) {
+                log::warn!("couldn't add {} to the list of imported files: {e:#}", f.file_name());
             }
-
-            let id = project.insert(&NewItem {
-                rel_path: &rel,
-                kind: f.kind,
-                file_name: &name,
-                size: f.size,
-                hash: &out.hash,
-                camera: &f.camera_label,
-                meta: &f.meta,
-                sidecars: &sidecar_rels,
-            })?;
-            state.ledger.record(&f.key, &p.project_root, &rel, &out.hash)?;
             let media = rel_to_path(&project.root, &rel);
             if xmp::wants_sidecar(&media) && (!settings.artist.trim().is_empty() || !settings.copyright.trim().is_empty()) {
                 state.xmp.write(
@@ -265,11 +294,11 @@ pub fn run(app: AppHandle, state: Arc<AppState>, scan: Arc<Scan>, project: Arc<P
                     },
                 );
             }
-            Ok(Some(id))
+            Ok(id)
         })();
 
         match res {
-            Ok(Some(id)) => {
+            Ok(id) => {
                 match f.kind {
                     Kind::Photo => photos += 1,
                     Kind::Video => videos += 1,
@@ -279,19 +308,33 @@ pub fn run(app: AppHandle, state: Arc<AppState>, scan: Arc<Scan>, project: Arc<P
                 }
                 state.jobs.enqueue_preview(project.clone(), id);
             }
-            Ok(None) => {}
-            Err(e) => {
-                if !cancel.load(Ordering::Relaxed) {
-                    p.failed += 1;
-                    failed.push(FileError { file: f.file_name(), error: format!("{e:#}") });
-                }
-            }
+            // A file cut short by "Stop" isn't a failure: it was simply not imported.
+            Err(_) if cancel.load(Ordering::Relaxed) => {}
+            Err(e) => failed.push(FileError { file: f.file_name(), error: format!("{e:#}") }),
         }
+        // Counts sidecars too, so the progress bar and the report agree.
+        p.failed = failed.len();
         p.done += 1;
         emit(&p, &state);
     }
 
     let cancelled = cancel.load(Ordering::Relaxed);
+    for e in &failed {
+        log::warn!("import: {}: {}", e.file, e.error);
+    }
+    for e in &backup_failed {
+        log::warn!("backup: {}: {}", e.file, e.error);
+    }
+    log::info!(
+        "import from {} into {}: {} copied, {} skipped, {} failed, {} backup failures{}",
+        req.source,
+        p.project_name,
+        photos + videos,
+        p.skipped,
+        failed.len(),
+        backup_failed.len(),
+        if cancelled { " (stopped)" } else { "" }
+    );
     let report = Report {
         source: req.source.clone(),
         card_mount: req.card_mount.clone(),

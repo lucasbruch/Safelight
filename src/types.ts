@@ -27,6 +27,8 @@ export interface ScanSummary {
   newVideos: number;
   newBytes: number;
   alreadyImported: number;
+  /** Of those, rejects that were sent to the Trash from Safelight. */
+  trashed: number;
   /** First capture date among files not imported yet; names a new project. */
   firstNewDate: string | null;
   alreadyIn: string[];

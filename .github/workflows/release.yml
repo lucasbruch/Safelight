@@ -48,6 +48,47 @@ jobs:
 
       - run: npm ci
 
+      # Code signing, switched on per platform once its secrets exist (see "Code
+      # signing" in README.md). Without them the build is unsigned, as before.
+      # Tauri signs as soon as these variables are set at all, even to an empty
+      # value, so they're only exported when there's something to put in them.
+      - name: Signing setup
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+        run: |
+          # Multi-line form, so a value with line breaks survives intact.
+          put() { { echo "$1<<__SIGNING_EOF__"; echo "$2"; echo "__SIGNING_EOF__"; } >> "$GITHUB_ENV"; }
+          if [ "$RUNNER_OS" = macOS ] && [ -n "$APPLE_CERTIFICATE" ]; then
+            for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY; do put "$v" "${!v}"; done
+            # Notarization (Gatekeeper's online check) also needs the Apple ID.
+            if [ -n "$APPLE_ID" ]; then
+              for v in APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do put "$v" "${!v}"; done
+            fi
+            echo "macOS build: signed${APPLE_ID:+ and notarized}"
+          elif [ "$RUNNER_OS" = Windows ] && [ -n "$AZURE_CLIENT_ID" ]; then
+            cargo install trusted-signing-cli --locked
+            for v in AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_TENANT_ID; do put "$v" "${!v}"; done
+            # Signs the app and both installers through Azure Trusted Signing.
+            cmd="trusted-signing-cli -e $SIGNING_ENDPOINT -a $SIGNING_ACCOUNT -c $SIGNING_PROFILE -d Safelight %1"
+            echo "{\"bundle\":{\"windows\":{\"signCommand\":\"$cmd\"}}}" > src-tauri/tauri.signing.json
+            put SIGN_ARGS "--config src-tauri/tauri.signing.json"
+            echo "Windows build: signed"
+          else
+            echo "No signing secrets for $RUNNER_OS: this build is unsigned."
+          fi
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -58,4 +99,4 @@ jobs:
           releaseName: "Safelight v__VERSION__"
           releaseDraft: true
           prerelease: false
-          args: ${{ matrix.args }}
+          args: ${{ matrix.args }} ${{ env.SIGN_ARGS }}

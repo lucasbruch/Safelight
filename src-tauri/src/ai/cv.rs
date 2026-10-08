@@ -225,7 +225,7 @@ mod tests {
     use image::{Rgb, RgbImage};
 
     fn checker(size: u32, cell: u32) -> RgbImage {
-        RgbImage::from_fn(size, size, |x, y| if ((x / cell) + (y / cell)) % 2 == 0 { Rgb([240, 240, 240]) } else { Rgb([20, 20, 20]) })
+        RgbImage::from_fn(size, size, |x, y| if ((x / cell) + (y / cell)).is_multiple_of(2) { Rgb([240, 240, 240]) } else { Rgb([20, 20, 20]) })
     }
 
     #[test]

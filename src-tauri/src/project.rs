@@ -3,6 +3,7 @@
 //! project needs lives inside it, so it can be moved or copied as a whole.
 
 use crate::meta::{Kind, Meta};
+use crate::schema::Step;
 use anyhow::{Context, Result};
 use parking_lot::Mutex;
 use rusqlite::{params, Connection, OptionalExtension, Row};
@@ -140,6 +141,18 @@ CREATE TABLE IF NOT EXISTS imports (
 CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 "#;
 
+/// Changes since the first release, in order. Append only: never edit or remove a step.
+const MIGRATIONS: &[Step] = &[
+    Step { sql: "ALTER TABLE items ADD COLUMN video TEXT", unless_column: Some(("items", "video")) },
+    Step { sql: "ALTER TABLE items ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'", unless_column: Some(("items", "tags")) },
+];
+
+/// (id, captured_at, CLIP embedding).
+pub type ClipEmbedding = (i64, Option<String>, Vec<f32>);
+
+/// total, photos, videos, picks, rejects, first and last capture date, cover id.
+type SummaryRow = (i64, i64, i64, i64, i64, Option<String>, Option<String>, Option<i64>);
+
 pub struct NewItem<'a> {
     pub rel_path: &'a str,
     pub kind: Kind,
@@ -160,9 +173,7 @@ impl Project {
         let conn = Connection::open(dir.join("project.sqlite"))?;
         conn.busy_timeout(std::time::Duration::from_secs(10))?;
         conn.execute_batch(SCHEMA)?;
-        // Columns added after the first release; "duplicate column" means it's already there.
-        let _ = conn.execute("ALTER TABLE items ADD COLUMN video TEXT", []);
-        let _ = conn.execute("ALTER TABLE items ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'", []);
+        crate::schema::migrate(&conn, "This project", MIGRATIONS)?;
         Ok(Self { root: root.to_path_buf(), db: Mutex::new(conn) })
     }
 
@@ -426,7 +437,7 @@ impl Project {
     }
 
     /// (id, captured_at, clip embedding) for every photo with an embedding.
-    pub fn embeddings(&self) -> Result<Vec<(i64, Option<String>, Vec<f32>)>> {
+    pub fn embeddings(&self) -> Result<Vec<ClipEmbedding>> {
         let db = self.db.lock();
         let mut st = db.prepare(
             "SELECT id, captured_at, embedding FROM items WHERE embedding IS NOT NULL ORDER BY captured_at, file_name",
@@ -476,7 +487,7 @@ impl Project {
 
     pub fn summary(&self) -> Result<Summary> {
         let db = self.db.lock();
-        let (total, photos, videos, picks, rejects, first, last, cover): (i64, i64, i64, i64, i64, Option<String>, Option<String>, Option<i64>) = db.query_row(
+        let (total, photos, videos, picks, rejects, first, last, cover): SummaryRow = db.query_row(
             "SELECT COUNT(*),
                     COALESCE(SUM(kind = 'photo'), 0),
                     COALESCE(SUM(kind = 'video'), 0),
@@ -519,6 +530,30 @@ pub struct Summary {
     pub last_date: Option<String>,
     pub cover: Option<String>,
 }
+
+fn f32_bytes(v: &[f32]) -> Vec<u8> {
+    v.iter().flat_map(|x| x.to_le_bytes()).collect()
+}
+
+fn bytes_f32(b: &[u8]) -> Vec<f32> {
+    b.as_chunks::<4>().0.iter().map(|c| f32::from_le_bytes(*c)).collect()
+}
+
+#[cfg(windows)]
+fn hide_dir(p: &Path) {
+    use std::os::windows::ffi::OsStrExt;
+    let wide: Vec<u16> = p.as_os_str().encode_wide().chain(Some(0)).collect();
+    const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
+    extern "system" {
+        fn SetFileAttributesW(name: *const u16, attrs: u32) -> i32;
+    }
+    unsafe {
+        SetFileAttributesW(wide.as_ptr(), FILE_ATTRIBUTE_HIDDEN);
+    }
+}
+
+#[cfg(not(windows))]
+fn hide_dir(_: &Path) {} // dot-folders are already hidden on macOS
 
 #[cfg(test)]
 mod tests {
@@ -582,27 +617,3 @@ mod tests {
         assert_eq!(clean_tag(&"x".repeat(100)).map(|t| t.len()), Some(64));
     }
 }
-
-fn f32_bytes(v: &[f32]) -> Vec<u8> {
-    v.iter().flat_map(|x| x.to_le_bytes()).collect()
-}
-
-fn bytes_f32(b: &[u8]) -> Vec<f32> {
-    b.chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect()
-}
-
-#[cfg(windows)]
-fn hide_dir(p: &Path) {
-    use std::os::windows::ffi::OsStrExt;
-    let wide: Vec<u16> = p.as_os_str().encode_wide().chain(Some(0)).collect();
-    const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
-    extern "system" {
-        fn SetFileAttributesW(name: *const u16, attrs: u32) -> i32;
-    }
-    unsafe {
-        SetFileAttributesW(wide.as_ptr(), FILE_ATTRIBUTE_HIDDEN);
-    }
-}
-
-#[cfg(not(windows))]
-fn hide_dir(_: &Path) {} // dot-folders are already hidden on macOS

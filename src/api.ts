@@ -6,7 +6,8 @@ import type {
 
 export const api = {
   getSettings: () => invoke<Settings>("get_settings"),
-  saveSettings: (settings: Settings) => invoke<void>("save_settings", { settings }),
+  /** Returns the settings as stored (the backend keeps its own list of other projects). */
+  saveSettings: (settings: Settings) => invoke<Settings>("save_settings", { settings }),
   listCards: () => invoke<Card[]>("list_cards"),
   scanSource: (source: string, label?: string) => invoke<ScanSummary>("scan_source", { source, label }),
   startImport: (request: {
@@ -34,6 +35,7 @@ export const api = {
   handoffStatus: () => invoke<HandoffStatus>("handoff_status"),
   sendToLightroom: (root: string, ids: number[]) => invoke<string>("send_to_lightroom", { root, ids }),
   sendToResolve: (root: string, ids: number[]) => invoke<string>("send_to_resolve", { root, ids }),
+  logFile: () => invoke<string>("log_file"),
 };
 
 export interface Events {

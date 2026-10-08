@@ -36,6 +36,7 @@ pub enum Curve {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(clippy::enum_variant_names)] // Canon's own name for it
 pub enum Gamut {
     CinemaGamut,
     Bt709,
@@ -295,7 +296,7 @@ fn run(mut cmd: Command, what: &str) -> Result<()> {
     let out = cmd.stdout(Stdio::null()).stderr(Stdio::piped()).output().with_context(|| format!("running ffmpeg for {what}"))?;
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
-        let last = err.lines().filter(|l| !l.trim().is_empty()).last().unwrap_or("");
+        let last = err.lines().rfind(|l| !l.trim().is_empty()).unwrap_or("");
         bail!("ffmpeg couldn't make the {what}: {last}");
     }
     Ok(())

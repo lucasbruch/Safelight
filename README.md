@@ -40,8 +40,9 @@ bash scripts/fetch-helpers.sh   # ExifTool, ONNX Runtime, LibRaw, ffmpeg (pinned
 npm run tauri dev
 ```
 
-Tests: `cd src-tauri && cargo test` (the fixture-card test uses sample RAWs in `test-fixtures/`, which aren't in git; it's skipped when they're missing).
-CI (`.github/workflows/ci.yml`) runs the Rust tests, clippy and the TypeScript check on every push and pull request.
+Tests: `cd src-tauri && cargo test` (the fixture-card test uses sample RAWs in `test-fixtures/`, which aren't in git; it's skipped when they're missing),
+and `npm test` / `npm run lint` for the web UI.
+CI (`.github/workflows/ci.yml`) runs all of these, clippy (warnings fail the build) and a production build on every push and pull request.
 
 The AI models (~135 MB) are downloaded from inside the app (**Settings → AI helper → Download**), from pinned
 revisions, and checked against their SHA-256 before use. On Intel Macs the models are unavailable (ONNX Runtime
@@ -51,8 +52,9 @@ no longer ships Intel macOS builds); the sharpness, exposure and horizon checks 
 ## Releases
 
 Push a tag like `v0.1.0`. GitHub Actions (`.github/workflows/release.yml`) builds the Windows `.msi`/`.exe` and a
-universal macOS `.dmg` and attaches them to a draft release. Builds aren't code-signed yet, so the first launch shows a
-Windows SmartScreen or macOS Gatekeeper warning ("More info → Run anyway" / right-click → Open).
+universal macOS `.dmg` and attaches them to a draft release. Builds are code-signed once the signing secrets are set up
+([INSTALL.md → Code signing](INSTALL.md#code-signing)); until then the first launch shows a Windows SmartScreen or
+macOS Gatekeeper warning ("More info → Run anyway" / right-click → Open).
 
 ## License
 

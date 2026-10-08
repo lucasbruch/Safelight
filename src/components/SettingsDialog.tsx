@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { api, on } from "../api";
 import type { ModelStatus, Settings } from "../types";
 import type { ToastMsg } from "./Toast";
@@ -32,8 +33,16 @@ export default function SettingsDialog({ settings, onClose, onSaved, notify }: P
 
   const save = async () => {
     try {
-      await api.saveSettings(s);
-      onSaved(s);
+      onSaved(await api.saveSettings(s));
+    } catch (e) {
+      notify({ text: String(e), bad: true });
+    }
+  };
+
+  // For bug reports: release builds have no console, so the log file is the record.
+  const showLog = async () => {
+    try {
+      await revealItemInDir(await api.logFile());
     } catch (e) {
       notify({ text: String(e), bad: true });
     }
@@ -63,7 +72,10 @@ export default function SettingsDialog({ settings, onClose, onSaved, notify }: P
             <input className="input" value={s.libraryRoot} onChange={(e) => set("libraryRoot", e.target.value)} />
             <button className="btn" onClick={() => pick("libraryRoot", "Where should new projects go?")}>Choose…</button>
           </div>
-          <span className="hint">New projects are created here.</span>
+          <span className="hint">
+            New projects are created here.
+            {s.libraryRoot.trim() !== settings.libraryRoot.trim() && " Projects in the current folder stay where they are and stay listed."}
+          </span>
         </div>
 
         <div className="field">
@@ -117,6 +129,7 @@ export default function SettingsDialog({ settings, onClose, onSaved, notify }: P
         </div>
 
         <div className="actions">
+          <button className="btn ghost" style={{ marginRight: "auto" }} onClick={showLog}>Show log file</button>
           <button className="btn ghost" onClick={onClose}>Cancel</button>
           <button className="btn primary" onClick={save}>Save</button>
         </div>

@@ -103,7 +103,7 @@ fn run(exif: Arc<ExifTool>, rx: Receiver<Msg>) {
         }
         for (p, s) in pending {
             if let Err(e) = exif.run(&args(&p, &s)) {
-                eprintln!("[safelight] xmp write failed for {}: {e:#}", p.display());
+                log::error!("xmp write failed for {}: {e:#}", p.display());
             }
         }
         for w in waiters {

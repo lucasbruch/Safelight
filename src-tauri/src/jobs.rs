@@ -136,7 +136,7 @@ type Inflight = Arc<Mutex<HashSet<(char, PathBuf, i64)>>>;
 /// Runs one job, so a panic on one bad file fails that job instead of killing the worker.
 fn guarded(what: &str, id: i64, f: impl FnOnce()) {
     if std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).is_err() {
-        eprintln!("[safelight] {what} crashed on item {id}; skipped");
+        log::error!("{what} crashed on item {id}; skipped");
     }
 }
 
@@ -178,7 +178,7 @@ fn preview_one(ctx: &PreviewCtx, project: Arc<Project>, id: i64) {
                 1
             }
             Err(e) => {
-                eprintln!("[safelight] video preview failed for {}: {e:#}", item.file_name);
+                log::warn!("video preview failed for {}: {e:#}", item.file_name);
                 let _ = project.set_video(id, &VideoInfo { playback: "failed".into(), ..Default::default() });
                 2
             }
@@ -188,7 +188,7 @@ fn preview_one(ctx: &PreviewCtx, project: Arc<Project>, id: i64) {
         match crate::preview::build(&ctx.exif, &project, id, &src, item.meta.orientation) {
             Ok(()) => 1,
             Err(e) => {
-                eprintln!("[safelight] preview failed for {}: {e:#}", item.file_name);
+                log::warn!("preview failed for {}: {e:#}", item.file_name);
                 2
             }
         }
@@ -205,7 +205,7 @@ fn preview_one(ctx: &PreviewCtx, project: Arc<Project>, id: i64) {
 /// Poster frame (through the log viewing LUT if needed) and a playback decision.
 fn video_poster(exif: &ExifTool, project: &Project, item: &Item) -> anyhow::Result<VideoInfo> {
     let src = project.abs(&item.rel_path, item.moved_to_rejected);
-    let tags = exif.read_json_full(&[src.clone()], &["CanonLogVersion", "ColorSpace2", "Duration"]).unwrap_or_default();
+    let tags = exif.read_json_full(std::slice::from_ref(&src), &["CanonLogVersion", "ColorSpace2", "Duration"]).unwrap_or_default();
     let tag = |k: &str| {
         tags.first().and_then(|v| v.get(k)).and_then(|v| match v {
             serde_json::Value::String(s) => Some(s.clone()),
@@ -267,7 +267,7 @@ fn proxy_one(app: &AppHandle, project: &Arc<Project>, id: i64) {
     info.playback = match crate::video::proxy(&src, &project.proxy_path(id), &project.lut_dir(), log) {
         Ok(()) => "proxy".into(),
         Err(e) => {
-            eprintln!("[safelight] proxy failed for {}: {e:#}", item.file_name);
+            log::warn!("proxy failed for {}: {e:#}", item.file_name);
             "failed".into()
         }
     };

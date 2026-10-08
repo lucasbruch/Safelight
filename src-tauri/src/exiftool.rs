@@ -107,7 +107,7 @@ impl ExifTool {
             match guard.as_mut().unwrap().execute(args) {
                 Ok(out) => return Ok(out),
                 Err(e) if attempt == 0 => {
-                    eprintln!("[safelight] exiftool failed, restarting: {e:#}");
+                    log::error!("exiftool failed, restarting: {e:#}");
                     *guard = None;
                 }
                 Err(e) => return Err(e),

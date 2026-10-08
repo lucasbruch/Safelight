@@ -5,6 +5,7 @@
 //! * SFace (OpenCV Zoo, Apache-2.0): 128-d face identity, for "same person" clusters
 //! * CLIP ViT-B/32 vision (OpenAI, MIT; ONNX by Xenova): content tags and, through
 //!   LAION's linear aesthetic head (MIT), a 1–10 "looks good" score.
+//!
 //! Tag text embeddings and the aesthetic head are pre-computed by
 //! `scripts/gen_clip_data.py` and compiled in (`clip_data.bin`).
 
@@ -151,7 +152,7 @@ pub fn init_runtime(lib: Option<&Path>) -> Result<()> {
     static INIT: OnceLock<std::result::Result<(), String>> = OnceLock::new();
     INIT.get_or_init(|| {
         let lib = lib.ok_or("ONNX Runtime library not bundled")?;
-        ort::init_from(lib).map_err(|e| e.to_string())?.with_name("grabit").commit();
+        ort::init_from(lib).map_err(|e| e.to_string())?.with_name("safelight").commit();
         Ok(())
     })
     .clone()
@@ -181,7 +182,7 @@ fn clip_data() -> &'static ClipData {
         let b: &[u8] = include_bytes!("clip_data.bin");
         let u32_at = |o: usize| u32::from_le_bytes(b[o..o + 4].try_into().unwrap());
         let f32s = |o: usize, n: usize| -> Vec<f32> {
-            b[o..o + n * 4].chunks_exact(4).map(|c| f32::from_le_bytes(c.try_into().unwrap())).collect()
+            b[o..o + n * 4].as_chunks::<4>().0.iter().map(|c| f32::from_le_bytes(*c)).collect()
         };
         let n = u32_at(0) as usize;
         let mut o = 4;
@@ -400,7 +401,10 @@ impl Models {
         let (rw, rh) = (((w as f32 * s).round() as u32).max(224), ((h as f32 * s).round() as u32).max(224));
         let r = image::imageops::resize(img, rw, rh, FilterType::CatmullRom);
         let (ox, oy) = ((rw - 224) / 2, (rh - 224) / 2);
+        // CLIP's published normalisation, kept digit for digit.
+        #[allow(clippy::excessive_precision)]
         const MEAN: [f32; 3] = [0.48145466, 0.4578275, 0.40821073];
+        #[allow(clippy::excessive_precision)]
         const STD: [f32; 3] = [0.26862954, 0.26130258, 0.27577711];
         let plane = 224 * 224;
         let mut data = vec![0f32; plane * 3];
@@ -462,10 +466,10 @@ fn bilinear(img: &RgbImage, x: f32, y: f32) -> [f32; 3] {
     let (fx, fy) = (x - x0 as f32, y - y0 as f32);
     let p = |x, y| img.get_pixel(x, y).0;
     let mut out = [0f32; 3];
-    for c in 0..3 {
+    for (c, o) in out.iter_mut().enumerate() {
         let top = p(x0, y0)[c] as f32 * (1.0 - fx) + p(x1, y0)[c] as f32 * fx;
         let bot = p(x0, y1)[c] as f32 * (1.0 - fx) + p(x1, y1)[c] as f32 * fx;
-        out[c] = top * (1.0 - fy) + bot * fy;
+        *o = top * (1.0 - fy) + bot * fy;
     }
     out
 }

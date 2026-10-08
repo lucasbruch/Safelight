@@ -1,4 +1,5 @@
-# Checks every push and pull request: TypeScript types, Rust tests and clippy.
+# Checks every push and pull request: the web UI (lint, types, tests, build) and
+# the Rust backend (tests, clippy with every warning treated as an error).
 name: ci
 
 on:
@@ -16,7 +17,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx tsc --noEmit
+      - run: npm run lint
+      - run: npm test
+      # `tsc` (types) and then the production bundle.
+      - run: npm run build
 
   backend:
     # Windows: the platform most users run, and tauri-build needs the bundled
@@ -38,7 +42,7 @@ jobs:
         run: cargo test
       - name: Clippy
         working-directory: src-tauri
-        run: cargo clippy --all-targets -- -D clippy::correctness -D clippy::suspicious
+        run: cargo clippy --all-targets -- -D warnings
 
   backend-macos:
     # Catches breakage in the macOS helpers and macOS-only code before a release
@@ -47,6 +51,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
@@ -55,6 +61,7 @@ jobs:
       # An Intel-only helper runs under Rosetta and makes macOS warn about the app.
       - name: ffmpeg is universal
         run: lipo src-tauri/resources/ffmpeg/macos/ffmpeg -verify_arch arm64 x86_64
-      - name: Check
+      # Clippy type-checks like `cargo check` and also lints the macOS-only code.
+      - name: Clippy
         working-directory: src-tauri
-        run: cargo check --all-targets
+        run: cargo clippy --all-targets -- -D warnings

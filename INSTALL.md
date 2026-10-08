@@ -104,6 +104,7 @@ delete this folder:
 | A card isn't detected | It needs a `DCIM` folder (or `PRIVATE/M4ROOT` for Sony video). Drives holding your projects or backup folder are ignored on purpose. Use **Import from a folder…** for anything else. |
 | "Couldn't read the photos' metadata (ExifTool failed)" | Reinstall Safelight. On a Mac, also run the `xattr` command above. |
 | AI helper download fails | Check your internet connection and try again. A download that arrives damaged is discarded automatically. |
+| Anything else, or reporting a bug | Open **Settings → Show log file** and attach `safelight.log` to your report. It's in `%LOCALAPPDATA%\com.grabit.app\logs` (Windows) or `~/Library/Logs/com.grabit.app` (macOS). |
 
 ## For maintainers: publishing a release
 
@@ -121,3 +122,33 @@ Releases are built by GitHub Actions (`.github/workflows/release.yml`) on Window
    `.dmg` attached. Add release notes and click **Publish release**.
 
 You can also start the workflow by hand from **Actions → release → Run workflow**.
+
+### Code signing
+
+Without signing, Windows SmartScreen and macOS Gatekeeper warn on first launch. The release workflow signs each
+platform as soon as its secrets exist (**Settings → Secrets and variables → Actions** in the GitHub repository), and
+builds unsigned otherwise.
+
+**macOS** (needs an Apple Developer Program membership):
+
+| Secret | Value |
+| --- | --- |
+| `APPLE_CERTIFICATE` | Your *Developer ID Application* certificate exported as `.p12`, base64-encoded (`base64 -i cert.p12`) |
+| `APPLE_CERTIFICATE_PASSWORD` | The password you gave the `.p12` export |
+| `APPLE_SIGNING_IDENTITY` | The certificate's name, e.g. `Developer ID Application: Your Name (TEAMID)` |
+| `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` | For notarization: your Apple ID, an [app-specific password](https://support.apple.com/102654) and your team ID. Optional, but without notarization Gatekeeper still warns. |
+
+**Windows** (Azure Trusted Signing): create a Trusted Signing account and certificate profile in Azure, and an app
+registration with the *Trusted Signing Certificate Profile Signer* role on it.
+
+| Secret | Value |
+| --- | --- |
+| `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID` | The app registration's credentials |
+
+| Variable (not secret) | Value |
+| --- | --- |
+| `AZURE_SIGNING_ENDPOINT` | The account's region endpoint, e.g. `https://weu.codesigning.azure.net` |
+| `AZURE_SIGNING_ACCOUNT` | The Trusted Signing account name |
+| `AZURE_SIGNING_PROFILE` | The certificate profile name |
+
+The **Signing setup** step of each build says whether that build was signed.

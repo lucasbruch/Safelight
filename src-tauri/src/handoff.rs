@@ -295,7 +295,7 @@ fn lua_str(s: &str) -> String {
 
 const RESOLVE_LUA: &str = r#"
 local r = bmd.scriptapp("Resolve")
-if not r then print("GRABIT_ERR:NO_CONNECTION") return end
+if not r then print("SAFELIGHT_ERR:NO_CONNECTION") return end
 local pm = r:GetProjectManager()
 local proj = pm:GetCurrentProject()
 if not proj or proj:GetName() ~= PROJECT then
@@ -303,7 +303,7 @@ if not proj or proj:GetName() ~= PROJECT then
   if proj then pm:SaveProject() end
   proj = pm:LoadProject(PROJECT) or pm:CreateProject(PROJECT)
 end
-if not proj then print("GRABIT_ERR:PROJECT") return end
+if not proj then print("SAFELIGHT_ERR:PROJECT") return end
 local mp = proj:GetMediaPool()
 -- Resolve's Lua lists are tables with numeric keys plus bookkeeping like "__flags".
 local function items(t)
@@ -348,7 +348,7 @@ for _, g in ipairs(GROUPS) do
   end
 end
 r:OpenPage(PAGE)
-print("GRABIT_OK:" .. total)
+print("SAFELIGHT_OK:" .. total)
 "#;
 
 fn run_fuscript(fuscript: &Path, script: &Path) -> Result<String> {
@@ -396,23 +396,23 @@ pub fn resolve(p: &Project, items: &[Item]) -> Result<String> {
     lua.push_str(RESOLVE_LUA);
 
     let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
-    let script = std::env::temp_dir().join(format!("grabit_resolve_{}_{stamp}.lua", std::process::id()));
+    let script = std::env::temp_dir().join(format!("safelight_resolve_{}_{stamp}.lua", std::process::id()));
     std::fs::write(&script, lua)?;
 
     // Start Resolve if needed and wait for its scripting server.
     let mut out = run_fuscript(&rp.fuscript, &script)?;
-    if out.contains("GRABIT_ERR:NO_CONNECTION") {
+    if out.contains("SAFELIGHT_ERR:NO_CONNECTION") {
         let cmd = if cfg!(windows) { Command::new(&rp.app) } else { let mut c = Command::new("open"); c.arg("-a").arg(&rp.app); c };
         launch(cmd, "DaVinci Resolve")?;
         let t0 = Instant::now();
-        while out.contains("GRABIT_ERR:NO_CONNECTION") && t0.elapsed() < Duration::from_secs(150) {
+        while out.contains("SAFELIGHT_ERR:NO_CONNECTION") && t0.elapsed() < Duration::from_secs(150) {
             std::thread::sleep(Duration::from_secs(3));
             out = run_fuscript(&rp.fuscript, &script)?;
         }
     }
     let _ = std::fs::remove_file(&script);
 
-    if let Some(n) = out.lines().find_map(|l| l.trim().strip_prefix("GRABIT_OK:")) {
+    if let Some(n) = out.lines().find_map(|l| l.trim().strip_prefix("SAFELIGHT_OK:")) {
         let n: usize = n.trim().parse().unwrap_or(0);
         return Ok(if n == 0 {
             format!("Everything was already in the Resolve project \u{201c}{}\u{201d}.", p.name())
@@ -420,10 +420,10 @@ pub fn resolve(p: &Project, items: &[Item]) -> Result<String> {
             format!("Added {n} file{} to the Resolve project \u{201c}{}\u{201d}.", if n == 1 { "" } else { "s" }, p.name())
         });
     }
-    if out.contains("GRABIT_ERR:NO_CONNECTION") {
+    if out.contains("SAFELIGHT_ERR:NO_CONNECTION") {
         bail!("Safelight couldn't talk to Resolve. In Resolve, open Preferences \u{2192} System \u{2192} General, set \u{201c}External scripting using\u{201d} to \u{201c}Local\u{201d}, restart Resolve and try again. (This needs DaVinci Resolve Studio.)");
     }
-    if out.contains("GRABIT_ERR:PROJECT") {
+    if out.contains("SAFELIGHT_ERR:PROJECT") {
         bail!("Resolve couldn't create or open the project \u{201c}{}\u{201d}. Close any open dialogs in Resolve and try again.", p.name());
     }
     bail!("Resolve didn't confirm the import. Output: {}", out.trim())

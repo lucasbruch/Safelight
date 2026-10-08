@@ -35,12 +35,39 @@ pub fn get_settings(state: St) -> Settings {
     state.settings.lock().clone()
 }
 
+/// Saves what the Settings dialog edits and returns the settings as stored.
 #[tauri::command]
-pub fn save_settings(state: St, settings: Settings) -> Res<()> {
-    settings.save(&state.data_dir).map_err(err)?;
-    state.analyzer().set_enabled(settings.ai_enabled);
-    *state.settings.lock() = settings;
-    Ok(())
+pub fn save_settings(state: St, settings: Settings) -> Res<Settings> {
+    let mut cur = state.settings.lock();
+    let next = merge_saved(&cur, settings);
+    next.save(&state.data_dir).map_err(err)?;
+    state.analyzer().set_enabled(next.ai_enabled);
+    *cur = next.clone();
+    Ok(next)
+}
+
+/// The UI's copy of the settings can be older than the backend's: projects may
+/// have been remembered since it was read. That list belongs to the backend.
+/// When the projects folder changes, the projects in the old one stay listed.
+fn merge_saved(cur: &Settings, mut next: Settings) -> Settings {
+    next.other_projects = cur.other_projects.clone();
+    if Path::new(next.library_root.trim()) != Path::new(cur.library_root.trim()) {
+        let new_lib = PathBuf::from(next.library_root.trim());
+        for p in projects_in(Path::new(&cur.library_root)) {
+            let r = p.to_string_lossy().into_owned();
+            if p.parent() != Some(new_lib.as_path()) && !next.other_projects.contains(&r) {
+                next.other_projects.push(r);
+            }
+        }
+    }
+    next
+}
+
+/// Safelight projects directly inside `dir`.
+fn projects_in(dir: &Path) -> Vec<PathBuf> {
+    std::fs::read_dir(dir)
+        .map(|rd| rd.flatten().map(|e| e.path()).filter(|p| Project::is_project(p)).collect())
+        .unwrap_or_default()
 }
 
 #[tauri::command]
@@ -131,9 +158,7 @@ pub async fn list_projects(state: St<'_>) -> Res<Vec<Summary>> {
     let st = state.inner().clone();
     blocking(move || {
         let s = st.settings.lock().clone();
-        let mut roots: Vec<PathBuf> = std::fs::read_dir(&s.library_root)
-            .map(|rd| rd.flatten().map(|e| e.path()).filter(|p| Project::is_project(p)).collect())
-            .unwrap_or_default();
+        let mut roots = projects_in(Path::new(&s.library_root));
         roots.extend(s.other_projects.iter().map(PathBuf::from).filter(|p| Project::is_project(p)));
         roots.sort();
         roots.dedup();
@@ -284,18 +309,17 @@ fn move_item(p: &Project, it: &Item, to_rejected: bool) -> anyhow::Result<()> {
             if !from.exists() {
                 continue;
             }
-            anyhow::ensure!(!to.exists(), "{} already exists", to.display());
             if let Some(parent) = to.parent() {
                 std::fs::create_dir_all(parent)?;
             }
-            std::fs::rename(&from, &to).with_context(|| format!("moving {}", from.display()))?;
+            crate::copy::rename_no_replace(&from, &to).with_context(|| format!("moving {}", from.display()))?;
             done.push((from, to));
         }
         p.set_moved(it.id, to_rejected)
     })();
     if let Err(e) = res {
         for (from, to) in done.iter().rev() {
-            let _ = std::fs::rename(to, from);
+            let _ = crate::copy::rename_no_replace(to, from);
         }
         return Err(e);
     }
@@ -361,6 +385,11 @@ pub async fn trash_rejects(state: St<'_>, root: String) -> Res<usize> {
             trash::delete_all(&files)?;
         }
         p.delete_items(&doomed.iter().map(|i| i.id).collect::<Vec<_>>())?;
+        // So inserting the card again doesn't offer them as new photos.
+        let rels: Vec<String> = doomed.iter().map(|i| i.rel_path.clone()).collect();
+        if let Err(e) = st.ledger.mark_trashed(&p.root.to_string_lossy(), &rels) {
+            log::warn!("couldn't remember trashed rejects: {e:#}");
+        }
         for it in &doomed {
             p.remove_cache(it.id);
         }
@@ -471,6 +500,14 @@ pub async fn send_to_resolve(state: St<'_>, root: String, ids: Vec<i64>) -> Res<
     .await
 }
 
+/// Where the log file is, for "Show log file" in Settings.
+#[tauri::command]
+pub fn log_file(app: AppHandle) -> Res<String> {
+    use tauri::Manager;
+    let dir = app.path().app_log_dir().map_err(err)?;
+    Ok(dir.join(format!("{}.log", crate::LOG_NAME)).to_string_lossy().into_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -490,6 +527,28 @@ mod tests {
             .insert(&NewItem { rel_path: rel, kind: Kind::Photo, file_name: name, size: 1, hash: "h", camera: "c", meta: &meta, sidecars })
             .unwrap();
         p.item(id).unwrap()
+    }
+
+    #[test]
+    fn saving_settings_keeps_every_project_listed() {
+        let dir = tempfile::tempdir().unwrap();
+        let old_lib = dir.path().join("Old");
+        Project::open(&old_lib.join("2026-05-01_A")).unwrap();
+        std::fs::create_dir_all(old_lib.join("not a project")).unwrap();
+        let elsewhere = dir.path().join("Elsewhere").to_string_lossy().into_owned();
+        let cur = Settings { library_root: old_lib.to_string_lossy().into_owned(), other_projects: vec![elsewhere.clone()], ..Default::default() };
+
+        // The dialog was opened before `elsewhere` was remembered, and nothing else changed.
+        let stale = Settings { other_projects: vec![], artist: "Me".into(), ..cur.clone() };
+        let saved = merge_saved(&cur, stale);
+        assert_eq!(saved.other_projects, vec![elsewhere.clone()]);
+        assert_eq!(saved.artist, "Me");
+
+        // A new projects folder: the old folder's projects stay listed.
+        let moved = Settings { library_root: dir.path().join("New").to_string_lossy().into_owned(), ..cur.clone() };
+        let saved = merge_saved(&cur, moved);
+        let a = old_lib.join("2026-05-01_A").to_string_lossy().into_owned();
+        assert_eq!(saved.other_projects, vec![elsewhere, a]);
     }
 
     #[test]

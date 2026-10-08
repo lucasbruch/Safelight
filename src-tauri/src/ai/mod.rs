@@ -57,7 +57,7 @@ impl Analyzer {
             match models::init_runtime(self.runtime.as_deref()).and_then(|()| Models::load(&self.models_dir)) {
                 Ok(m) => *g = Some(Arc::new(m)),
                 Err(e) => {
-                    eprintln!("[safelight] AI models failed to load: {e:#}");
+                    log::error!("AI models failed to load: {e:#}");
                     self.models_failed.store(true, Ordering::Relaxed);
                 }
             }
@@ -119,7 +119,7 @@ impl Analyzer {
             Ok(())
         })();
         if let Err(e) = result {
-            eprintln!("[safelight] analysis failed for item {id}: {e:#}");
+            log::warn!("analysis failed for item {id}: {e:#}");
             let _ = project.set_ai(id, &Ai::default(), 2);
         }
         if let Ok(item) = project.item(id) {

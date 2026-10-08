@@ -12,6 +12,7 @@ import SendDialog from "../cull/SendDialog";
 import { Compare, ZoomImage, Center } from "../cull/Viewer";
 import { applyFilters, emptyFilters, filterOptions, Filters, FlagFilter } from "../cull/filters";
 import { FlagBadge, Thumb } from "../cull/bits";
+import { createSaveQueue } from "../cull/saveQueue";
 
 type View = "grid" | "loupe" | "compare";
 type Undo = { ids: number[]; field: "flag" | "rating"; before: Map<number, number> };
@@ -34,9 +35,9 @@ export default function Cull({ root, progress, onBack, notify }: Props) {
   const [view, setView] = useState<View>("grid");
   const [zoom, setZoom] = useState(false);
   const [center, setCenter] = useState<Center>({ x: 0.5, y: 0.5 });
-  const [thumbSize, setThumbSize] = useState(() => Number(safeGet("grabit.thumb") ?? 220));
-  const [autoAdvance, setAutoAdvance] = useState(() => safeGet("grabit.advance") !== "0");
-  const [showInfo, setShowInfo] = useState(() => safeGet("grabit.info") !== "0");
+  const [thumbSize, setThumbSize] = useState(() => Number(pref("thumb") ?? 220));
+  const [autoAdvance, setAutoAdvance] = useState(() => pref("advance") !== "0");
+  const [showInfo, setShowInfo] = useState(() => pref("info") !== "0");
   const [sending, setSending] = useState(false);
   const [confirm, setConfirm] = useState<null | "move" | "trash" | "accept">(null);
   const [hud, setHud] = useState<Hud | null>(null);
@@ -57,8 +58,11 @@ export default function Cull({ root, progress, onBack, notify }: Props) {
   const closeKeys = useCallback(() => setShowKeys(false), []);
 
   // ---- data --------------------------------------------------------------
+  // Every change to the project goes through one queue, in the order you made it.
+  const [{ serial, settled, save: queueSave }] = useState(createSaveQueue);
+
   const reload = useCallback(() => {
-    api.openProject(root).then((p) => {
+    serial(() => api.openProject(root)).then((p) => {
       setName(p.name);
       setItems(p.items);
       setLoaded(true);
@@ -67,7 +71,7 @@ export default function Cull({ root, progress, onBack, notify }: Props) {
       notify({ text: String(e), bad: true });
       onBack();
     });
-  }, [root, notify, onBack]);
+  }, [root, notify, onBack, serial]);
 
   useEffect(reload, [reload]);
 
@@ -76,6 +80,11 @@ export default function Cull({ root, progress, onBack, notify }: Props) {
     const byId = new Map(updated.map((u) => [u.id, u]));
     setItems((cur) => cur.map((i) => byId.get(i.id) ?? i));
   }, []);
+
+  const save = useCallback(
+    async (ids: number[], call: () => Promise<Item[]>) => merge(await queueSave(ids, call)),
+    [queueSave, merge],
+  );
 
   // Previews and AI results arrive in the background and may have been read
   // before your latest pick or rating was saved: take everything from them
@@ -102,9 +111,9 @@ export default function Cull({ root, progress, onBack, notify }: Props) {
     return () => void subs.forEach((s) => s.then((u) => u()));
   }, [root, mergeBackground]);
 
-  useEffect(() => void safeSet("grabit.thumb", String(thumbSize)), [thumbSize]);
-  useEffect(() => void safeSet("grabit.advance", autoAdvance ? "1" : "0"), [autoAdvance]);
-  useEffect(() => void safeSet("grabit.info", showInfo ? "1" : "0"), [showInfo]);
+  useEffect(() => void safeSet("safelight.thumb", String(thumbSize)), [thumbSize]);
+  useEffect(() => void safeSet("safelight.advance", autoAdvance ? "1" : "0"), [autoAdvance]);
+  useEffect(() => void safeSet("safelight.info", showInfo ? "1" : "0"), [showInfo]);
 
   // ---- derived -------------------------------------------------------------
   const shown = useMemo(() => applyFilters(items, filters), [items, filters]);
@@ -184,23 +193,23 @@ export default function Cull({ root, progress, onBack, notify }: Props) {
     // Advance now, not after the save: the next key press must land on the next photo.
     if (autoAdvance && ids.length === 1 && view !== "compare") move(1);
     try {
-      merge(field === "flag" ? await api.setFlag(root, ids, value) : await api.setRating(root, ids, value));
+      await save(ids, () => (field === "flag" ? api.setFlag(root, ids, value) : api.setRating(root, ids, value)));
     } catch (e) {
       notify({ text: String(e), bad: true });
       reload();
     }
-  }, [targets, snapshot, root, merge, notify, autoAdvance, move, view, reload]);
+  }, [targets, snapshot, root, save, notify, autoAdvance, move, view, reload]);
 
   const editTags = useCallback(async (add: string[], remove: string[]) => {
     const ids = targets();
     if (!ids.length) return;
     try {
-      merge(await api.editTags(root, ids, add, remove));
+      await save(ids, () => api.editTags(root, ids, add, remove));
     } catch (e) {
       notify({ text: String(e), bad: true });
       reload();
     }
-  }, [targets, root, merge, notify, reload]);
+  }, [targets, root, save, notify, reload]);
 
   const tagTargets = useMemo(() => {
     const ids = new Set(targets());
@@ -217,14 +226,14 @@ export default function Cull({ root, progress, onBack, notify }: Props) {
     for (const [id, v] of u.before) byValue.set(v, [...(byValue.get(v) ?? []), id]);
     try {
       for (const [v, ids] of byValue) {
-        merge(u.field === "flag" ? await api.setFlag(root, ids, v) : await api.setRating(root, ids, v));
+        await save(ids, () => (u.field === "flag" ? api.setFlag(root, ids, v) : api.setRating(root, ids, v)));
       }
       notify({ text: "Undone", ms: 1500 });
     } catch (e) {
       notify({ text: String(e), bad: true });
       reload();
     }
-  }, [root, merge, notify, reload]);
+  }, [root, save, notify, reload]);
 
   const clickItem = (id: number, e: React.MouseEvent) => {
     if (e.shiftKey && anchor.current != null) {
@@ -302,7 +311,7 @@ export default function Cull({ root, progress, onBack, notify }: Props) {
   const doMoveRejects = async () => {
     setConfirm(null);
     try {
-      const r = await api.moveRejects(root);
+      const r = await serial(() => api.moveRejects(root));
       if (r.failed.length) {
         notify({
           text: `Moved ${plural(r.moved, "reject")}. ${plural(r.failed.length, "photo")} couldn't be moved (is it open in another app?): ${r.failed[0]}`,
@@ -319,7 +328,7 @@ export default function Cull({ root, progress, onBack, notify }: Props) {
   const doTrash = async () => {
     setConfirm(null);
     try {
-      const n = await api.trashRejects(root);
+      const n = await serial(() => api.trashRejects(root));
       notify({ text: `Sent ${plural(n, "reject")} to the ${navigator.platform.startsWith("Mac") ? "Trash" : "Recycle Bin"}.` });
       reload();
     } catch (e) {
@@ -481,7 +490,7 @@ export default function Cull({ root, progress, onBack, notify }: Props) {
         )}
       </div>
 
-      {sending && <SendDialog root={root} items={items} selection={selection} onClose={() => setSending(false)} />}
+      {sending && <SendDialog root={root} items={items} selection={selection} settled={settled} onClose={() => setSending(false)} />}
 
       {confirm === "move" && (
         <Confirm
@@ -678,6 +687,10 @@ function sortItems(items: Item[]): Item[] {
   return items.sort((a, b) => (a.capturedAt ?? "￿").localeCompare(b.capturedAt ?? "￿") || a.fileName.localeCompare(b.fileName));
 }
 
+/** A per-viewer preference, read from its pre-rename key if it hasn't been saved since. */
+function pref(name: string) {
+  return safeGet(`safelight.${name}`) ?? safeGet(`grabit.${name}`);
+}
 function safeGet(k: string): string | null {
   try { return localStorage.getItem(k); } catch { return null; }
 }

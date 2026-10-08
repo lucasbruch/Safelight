@@ -121,6 +121,9 @@ export default function ImportDialog({ source, settings, onClose, onStarted, onN
                 <div>
                   {plural(scan.alreadyImported, "file")} {scan.alreadyImported === 1 ? "was" : "were"} imported before
                   {scan.alreadyIn.length > 0 && <> (into <b>{scan.alreadyIn.join(", ")}</b>)</>}.{" "}
+                  {scan.trashed > 0 && (scan.trashed === scan.alreadyImported
+                    ? `You rejected and deleted ${scan.trashed === 1 ? "it" : "them"}. `
+                    : `${scan.trashed} of them you rejected and deleted. `)}
                   {again ? "They'll be copied again." : count > 0 ? `Only the ${count} new ones will be copied.` : "There's nothing new on this card."}
                   <label className="row" style={{ marginTop: 8, gap: 8, cursor: "pointer" }}>
                     <input type="checkbox" checked={again} onChange={(e) => setAgain(e.target.checked)} />

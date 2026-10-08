@@ -10,6 +10,7 @@ mod ledger;
 mod meta;
 mod preview;
 mod project;
+mod schema;
 mod settings;
 mod state;
 mod video;
@@ -52,9 +53,25 @@ pub fn run() {
     #[cfg(windows)]
     kill_helpers_on_exit();
     tauri::Builder::default()
+        // A log file in the app's log folder (Settings → Show log file): release builds
+        // have no console, so this is all a bug report can include.
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(log::LevelFilter::Info)
+                .level_for("ort", log::LevelFilter::Warn)
+                .targets([
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir { file_name: Some(LOG_NAME.into()) }),
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
+                ])
+                .max_file_size(2_000_000)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(3))
+                .build(),
+        )
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            log_panics();
+            log::info!("Safelight {} starting on {}", env!("CARGO_PKG_VERSION"), std::env::consts::OS);
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
             let settings = settings::Settings::load(&data_dir);
@@ -117,9 +134,23 @@ pub fn run() {
             commands::handoff_status,
             commands::send_to_lightroom,
             commands::send_to_resolve,
+            commands::log_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Safelight");
+}
+
+pub const LOG_NAME: &str = "safelight";
+
+/// Panics are caught per job (see `jobs::guarded`), which would otherwise hide
+/// what went wrong; record each one in the log first.
+fn log_panics() {
+    let default = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let thread = std::thread::current().name().unwrap_or("unnamed").to_string();
+        log::error!("panic on thread {thread}: {info}");
+        default(info);
+    }));
 }
 
 /// Polls for camera cards and tells the UI when the set changes.
