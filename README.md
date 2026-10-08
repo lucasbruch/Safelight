@@ -2,11 +2,7 @@
 
 Import, sort and cull photos from camera cards, then hand the keepers to Lightroom Classic or DaVinci Resolve. Runs on Windows and macOS.
 
-
-
 https://github.com/user-attachments/assets/d0f81d20-6a10-41ca-89f6-c4157ef45c20
-
-
 
 ## What it does
 
@@ -25,6 +21,10 @@ https://github.com/user-attachments/assets/d0f81d20-6a10-41ca-89f6-c4157ef45c20
    **DaVinci Resolve Studio** (creates a project with bins per day and camera, then opens the Photo page).
 
 Ratings and picks live in `.xmp` files next to each RAW and in `<project>/.grabit/`, so a project folder can be moved as a whole.
+
+![The Cull screen while a card is still copying: AI flags on each frame (eyes closed, soft, best of a burst), picks and rejects, and the info panel](docs/media/screenshot-cull.jpg)
+
+<sub>Photos in the demo and screenshot are from Unsplash, see [credits](docs/media/CREDITS.md).</sub>
 
 ## Install
 

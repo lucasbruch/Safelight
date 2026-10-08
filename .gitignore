@@ -26,3 +26,6 @@ test-fixtures/
 
 # Bundled helper binaries: fetched by scripts/fetch-helpers.sh and in CI
 src-tauri/resources/
+
+# Demo video: uploaded to GitHub by hand, not kept in git
+docs/media/*.mp4
