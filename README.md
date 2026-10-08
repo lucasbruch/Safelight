@@ -2,6 +2,12 @@
 
 Import, sort and cull photos from camera cards, then hand the keepers to Lightroom Classic or DaVinci Resolve. Runs on Windows and macOS.
 
+
+
+https://github.com/user-attachments/assets/d0f81d20-6a10-41ca-89f6-c4157ef45c20
+
+
+
 ## What it does
 
 1. **Insert a card**: Safelight notices it and asks for a project name.
